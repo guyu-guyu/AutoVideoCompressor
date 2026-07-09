@@ -209,6 +209,13 @@ pub fn compress_directory_now(core: Core, path: String) -> AppResult<()> {
 }
 
 #[tauri::command]
+pub fn stop_compression(core: Core) -> AppResult<()> {
+    let core_arc = core.inner().clone();
+    core_arc.stop_compression();
+    Ok(())
+}
+
+#[tauri::command]
 pub fn recheck_ffmpeg(core: Core) -> AppResult<()> {
     let core_arc = core.inner().clone();
     core_arc.check_ffmpeg_async();

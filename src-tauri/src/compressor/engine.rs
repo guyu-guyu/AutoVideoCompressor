@@ -1,6 +1,7 @@
 use crate::types::FfmpegStatus;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 #[cfg(windows)]
@@ -24,6 +25,7 @@ pub struct CompressResult {
     pub exit_code: i32,
     pub duration_ms: i32,
     pub error_message: String,
+    pub cancelled: bool,
 }
 
 fn base_command(program: &str) -> Command {
@@ -34,8 +36,8 @@ fn base_command(program: &str) -> Command {
 }
 
 /// Run a process with a timeout. Returns (exit_code, timed_out, captured_output).
-/// exit_code is -1 on spawn failure, -2 on timeout.
-pub fn run_process(program: &str, args: &[&str], timeout_secs: i64) -> (i32, bool, String) {
+/// exit_code is -1 on spawn failure, -2 on timeout, -3 on cancellation.
+pub fn run_process(program: &str, args: &[&str], timeout_secs: i64, cancel: &AtomicBool) -> (i32, bool, String) {
     let mut cmd = base_command(program);
     cmd.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = match cmd.spawn() {
@@ -44,6 +46,12 @@ pub fn run_process(program: &str, args: &[&str], timeout_secs: i64) -> (i32, boo
     };
     let start = Instant::now();
     loop {
+        // Check cancellation before each poll
+        if cancel.load(Ordering::SeqCst) {
+            let _ = child.kill();
+            let _ = child.wait(); // reap to avoid zombie
+            return (-3, false, String::new());
+        }
         match child.try_wait() {
             Ok(Some(status)) => {
                 let mut out = String::new();
@@ -55,6 +63,7 @@ pub fn run_process(program: &str, args: &[&str], timeout_secs: i64) -> (i32, boo
             Ok(None) => {
                 if start.elapsed() >= Duration::from_secs(timeout_secs.max(0) as u64) {
                     let _ = child.kill();
+                    let _ = child.wait();
                     return (-2, true, String::new());
                 }
                 std::thread::sleep(Duration::from_millis(100));
@@ -65,7 +74,7 @@ pub fn run_process(program: &str, args: &[&str], timeout_secs: i64) -> (i32, boo
 }
 
 /// Compress one file. Mirrors CompressionEngine::compress.
-pub fn compress(params: &CompressParams) -> CompressResult {
+pub fn compress(params: &CompressParams, cancel: &AtomicBool) -> CompressResult {
     let mut result = CompressResult::default();
     let start = Instant::now();
 
@@ -78,10 +87,13 @@ pub fn compress(params: &CompressParams) -> CompressResult {
     args.push(params.output_path.clone());
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
 
-    let (code, timed_out, _out) = run_process(&params.ffmpeg_path, &arg_refs, params.timeout_seconds);
+    let (code, timed_out, _out) = run_process(&params.ffmpeg_path, &arg_refs, params.timeout_seconds, cancel);
     result.duration_ms = start.elapsed().as_millis() as i32;
 
-    if timed_out {
+    if code == -3 {
+        result.cancelled = true;
+        result.error_message = "压缩已取消".into();
+    } else if timed_out {
         result.error_message = format!("压缩超时 ({}s)", params.timeout_seconds);
     } else if code == -1 {
         result.error_message = "无法启动 ffmpeg 进程".into();
@@ -107,7 +119,8 @@ pub fn probe_ffmpeg(path: &str) -> FfmpegStatus {
         s.error = format!("ffmpeg 路径不存在: {}", path);
         return s;
     }
-    let (code, timed_out, out) = run_process(path, &["-version"], 5);
+    let no_cancel = AtomicBool::new(false);
+    let (code, timed_out, out) = run_process(path, &["-version"], 5, &no_cancel);
     if code == -1 {
         s.error = "无法启动 ffmpeg".into();
         return s;
@@ -156,8 +169,8 @@ mod tests {
 
     #[test]
     fn compress_reports_exit_code() {
-        // Use cmd.exe as a stand-in "ffmpeg" that exits 0 and writes output.
-        let out = run_process("cmd", &["/C", "exit", "0"], 5);
+        let cancel = AtomicBool::new(false);
+        let out = run_process("cmd", &["/C", "exit", "0"], 5, &cancel);
         assert_eq!(out.0, 0); // exit code
     }
 }

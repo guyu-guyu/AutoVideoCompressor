@@ -23,6 +23,7 @@ export const api = {
   scanDirectory: (path: string) => invoke<FilePreview[]>("scan_directory", { path }),
   listRunHistory: (path: string) => invoke<RunSummary[]>("list_run_history", { path }),
   compressDirectoryNow: (path: string) => invoke<void>("compress_directory_now", { path }),
+  stopCompression: () => invoke<void>("stop_compression"),
   recheckFfmpeg: () => invoke<void>("recheck_ffmpeg"),
   getFfmpegStatus: () => invoke<FfmpegStatus>("get_ffmpeg_status"),
 };

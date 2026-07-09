@@ -54,6 +54,7 @@ fn main() {
             commands::scan_directory,
             commands::list_run_history,
             commands::compress_directory_now,
+            commands::stop_compression,
             commands::recheck_ffmpeg,
             commands::get_ffmpeg_status,
         ])

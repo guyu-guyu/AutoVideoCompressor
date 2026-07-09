@@ -21,6 +21,7 @@ pub struct AppCore {
     pub scheduler: Scheduler,
     pub template_manager: Mutex<TemplateManager>,
     pub compressor_running: AtomicBool,
+    pub cancel_flag: AtomicBool,
     pub ffmpeg_status: Mutex<FfmpegStatus>,
     pub last_runs: Mutex<std::collections::HashMap<String, (String, String)>>,
     pub app_handle: Mutex<Option<AppHandle>>,
@@ -55,6 +56,7 @@ impl AppCore {
             scheduler: Scheduler::new(),
             template_manager: Mutex::new(tm),
             compressor_running: AtomicBool::new(false),
+            cancel_flag: AtomicBool::new(false),
             ffmpeg_status: Mutex::new(FfmpegStatus::default()),
             last_runs: Mutex::new(std::collections::HashMap::new()),
             app_handle: Mutex::new(None),
@@ -159,12 +161,21 @@ impl AppCore {
         if self.compressor_running.swap(true, Ordering::SeqCst) {
             return false;
         }
+        // Reset cancel flag for this run
+        self.cancel_flag.store(false, Ordering::SeqCst);
         let me = Arc::clone(self);
         std::thread::spawn(move || {
             me.execute_for_directory(&dir, advance);
             me.compressor_running.store(false, Ordering::SeqCst);
+            // Notify frontend that compression stopped
+            me.emit_dir_state(&dir, Stage::Idle, "就绪");
         });
         true
+    }
+
+    /// Stop an ongoing compression. Kills ffmpeg and cleans up temp files.
+    pub fn stop_compression(&self) {
+        self.cancel_flag.store(true, Ordering::SeqCst);
     }
 
     /// Core per-directory pipeline. Mirrors App::executeForDirectory.
@@ -219,7 +230,14 @@ impl AppCore {
         }
 
         let mut all_results = Vec::new();
+        let mut was_cancelled = false;
         for (fi, sf) in files.iter().enumerate() {
+            // Check cancellation before processing each file
+            if self.cancel_flag.load(Ordering::SeqCst) {
+                was_cancelled = true;
+                break;
+            }
+
             self.emit("compress-progress", serde_json::json!({
                 "dirPath": dir, "currentFile": sf.relative_path,
                 "completed": fi + 1, "total": files.len()
@@ -252,7 +270,15 @@ impl AppCore {
                 output_path: temp_path.to_string_lossy().to_string(),
                 timeout_seconds: timeout,
             };
-            let cres = engine::compress(&cparams);
+            let cres = engine::compress(&cparams, &self.cancel_flag);
+
+            // If cancelled during compression, delete the temp file and break
+            if cres.cancelled {
+                was_cancelled = true;
+                let _ = std::fs::remove_file(&temp_path);
+                break;
+            }
+
             if !cres.success {
                 self.update_ffmpeg_status(FfmpegStatus {
                     ready: false, version: String::new(), error: cres.error_message.clone(),
@@ -274,23 +300,34 @@ impl AppCore {
         }
 
         if let Some(d0) = summary.directories.get_mut(0) {
-            d0.files_processed = files.len() as i32;
+            d0.files_processed = all_results.len() as i32;
         }
         summary.files = all_results;
         summary.end_time = crate::util::string_util::now_iso_public();
         summary.duration_seconds = 0;
         summary.compute_totals();
-        logger.finalize_run(&summary);
+
+        if was_cancelled {
+            // If cancelled, don't write the finalize log (partial run not saved)
+            // But still record what we did
+        } else {
+            logger.finalize_run(&summary);
+        }
 
         if advance { self.scheduler.mark_completed(dir); }
 
-        // record last-run for cards
-        let result_str = format!("成功{}·节省{}",
-            summary.success_count, format_file_size(summary.total_saved_bytes));
-        self.last_runs.lock().unwrap()
-            .insert(dir.to_string(), (summary.start_time.clone(), result_str));
+        // record last-run for cards (only if we did some work)
+        if !was_cancelled {
+            let result_str = format!("成功{}·节省{}",
+                summary.success_count, format_file_size(summary.total_saved_bytes));
+            self.last_runs.lock().unwrap()
+                .insert(dir.to_string(), (summary.start_time.clone(), result_str));
+        } else {
+            self.last_runs.lock().unwrap()
+                .insert(dir.to_string(), (summary.start_time.clone(), "已停止".into()));
+        }
 
-        self.emit_dir_state(dir, Stage::Idle, "就绪");
+        self.emit_dir_state(dir, Stage::Idle, if was_cancelled { "已停止" } else { "就绪" });
     }
 
     fn emit_dir_state(&self, dir: &str, stage: Stage, status: &str) {

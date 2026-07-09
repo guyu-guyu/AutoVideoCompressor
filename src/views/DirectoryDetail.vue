@@ -12,9 +12,14 @@ const store = useAppStore();
 const tab = ref<"preview" | "config" | "history">("preview");
 
 const card = computed(() => store.cards.find(c => c.path === props.dirPath));
+const isRunning = computed(() => store.runtime[props.dirPath]?.stage === "compressing");
 
 async function compressNow() {
   try { await api.compressDirectoryNow(props.dirPath); }
+  catch (e) { alert(String(e)); }
+}
+async function stopIt() {
+  try { await api.stopCompression(); }
   catch (e) { alert(String(e)); }
 }
 </script>
@@ -24,7 +29,13 @@ async function compressNow() {
     <div class="backbar">
       <button @click="emit('back')">← 返回</button>
       <span class="path">📁 {{ dirPath }}</span>
-      <button @click="compressNow">立即压缩此目录</button>
+      <span v-if="isRunning" class="running-indicator">🔄 压缩中</span>
+      <button v-if="isRunning" class="stop-btn" @click="stopIt">⏹ 停止压缩</button>
+      <button v-else @click="compressNow" :disabled="!store.ffmpeg.ready">立即压缩此目录</button>
+    </div>
+    <div v-if="isRunning && store.progress[dirPath]" class="progress-bar">
+      正在处理: {{ store.progress[dirPath].currentFile }}
+      ({{ store.progress[dirPath].completed }}/{{ store.progress[dirPath].total }})
     </div>
     <div v-if="card" class="summary">
       匹配 {{ card.fileCount }} · 参数 {{ card.paramsName || "默认" }} · 下次 {{ card.nextRunTime }}
@@ -46,7 +57,11 @@ async function compressNow() {
 .page { padding:12px; }
 .backbar { display:flex; gap:10px; align-items:center; margin-bottom:10px; }
 .path { flex:1; font-weight:600; }
+.running-indicator { color:#06c; font-weight:600; }
 .summary { background:#f6f6f6; border-radius:6px; padding:8px; margin-bottom:10px; font-size:0.9em; }
 .tabs { display:flex; gap:4px; margin-bottom:10px; }
 .tabs button.active { background:#06c; color:#fff; }
+.stop-btn { background:#e33; color:#fff; border:none; border-radius:4px; padding:4px 12px; cursor:pointer; }
+.stop-btn:hover { background:#c11; }
+.progress-bar { background:#e8f4ff; border-radius:6px; padding:6px 12px; margin-bottom:10px; font-size:0.9em; color:#06c; }
 </style>
