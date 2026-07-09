@@ -93,8 +93,12 @@ pub fn compress(params: &CompressParams, cancel: &AtomicBool) -> CompressResult 
     if code == -3 {
         result.cancelled = true;
         result.error_message = "压缩已取消".into();
+        // Delete partial output file directly at engine level
+        let _ = std::fs::remove_file(&params.output_path);
     } else if timed_out {
         result.error_message = format!("压缩超时 ({}s)", params.timeout_seconds);
+        // Clean up partial output on timeout
+        let _ = std::fs::remove_file(&params.output_path);
     } else if code == -1 {
         result.error_message = "无法启动 ffmpeg 进程".into();
     } else {
