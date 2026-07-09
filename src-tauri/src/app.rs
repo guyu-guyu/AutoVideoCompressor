@@ -136,8 +136,22 @@ impl AppCore {
             } else {
                 (0, 0, 0)
             };
-            let (last_time, last_result) = self.last_runs.lock().unwrap()
-                .get(&d.path).cloned().unwrap_or_default();
+            let (last_time, last_result) = {
+                let mut cache = self.last_runs.lock().unwrap();
+                if let Some(v) = cache.get(&d.path).cloned() {
+                    v
+                } else {
+                    // Fallback: read from log history (handles app restart)
+                    let history = crate::logger::read_history(&d.path);
+                    let val = history.first().map(|r| {
+                        let size_s = crate::util::string_util::format_file_size(r.total_saved_bytes);
+                        let result = format!("成功{}·节省{}", r.success_count, size_s);
+                        (r.start_time.clone(), result)
+                    }).unwrap_or_default();
+                    cache.insert(d.path.clone(), val.clone());
+                    val
+                }
+            };
             out.push(DirCardInfo {
                 path: d.path.clone(),
                 enabled: d.enabled,
