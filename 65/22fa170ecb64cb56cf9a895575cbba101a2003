@@ -1,0 +1,19 @@
+docs/superpowers/specs/2026-07-09-autocompress-tauri-refactor-design.md
+  s_c85fd265739400::t_aea05b0b00e7da 1-351
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "6522fa170ecb64cb56cf9a895575cbba101a2003",
+  "prompts": {},
+  "sessions": {
+    "s_c85fd265739400": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ea1ef0d-7c05-4985-a46d-acea755d326f",
+        "model": "hy3"
+      },
+      "human_author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
