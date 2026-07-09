@@ -36,6 +36,17 @@ async function stopIt(e: Event) {
   try { await api.stopCompression(); }
   catch (err) { alert(String(err)); }
 }
+async function removeIt(e: Event) {
+  e.stopPropagation();
+  const msg = isRunning()
+    ? `目录正在压缩，确定要删除"${props.card.path}"吗？(当前压缩任务将被中断)`
+    : `确定要删除目录"${props.card.path}"吗？(仅移除列表，不影响磁盘文件)`;
+  if (!confirm(msg)) return;
+  try {
+    await api.removeDirectory(props.card.path, isRunning());
+    emit("changed");
+  } catch (err) { alert(String(err)); }
+}
 </script>
 
 <template>
@@ -49,6 +60,7 @@ async function stopIt(e: Event) {
       <label @click.stop><input type="checkbox" :checked="card.enabled" @change="toggle" :disabled="isRunning()" /> 启用</label>
       <button v-if="isRunning()" class="stop-btn" @click="stopIt">⏹ 停止</button>
       <button v-else @click="compressNow" :disabled="!store.ffmpeg.ready">▶ 压缩</button>
+      <button class="del-btn" @click="removeIt" title="从列表中移除">🗑</button>
     </div>
     <div class="row2">
       {{ card.fileCount }} 文件 · {{ formatFileSize(card.totalSize) }}
@@ -77,4 +89,6 @@ async function stopIt(e: Event) {
 .next { color:#06c; font-weight:600; }
 .stop-btn { background:#e33; color:#fff; border:none; border-radius:4px; padding:4px 8px; cursor:pointer; }
 .stop-btn:hover { background:#c11; }
+.del-btn { background:none; border:none; cursor:pointer; font-size:1.1em; padding:2px 6px; opacity:0.4; }
+.del-btn:hover { opacity:1; }
 </style>
