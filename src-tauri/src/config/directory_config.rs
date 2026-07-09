@@ -20,6 +20,7 @@ pub struct DirectoryConfig {
     pub ctime_after: Option<String>,
     pub ctime_before: Option<String>,
     pub params: String,
+    pub use_custom_params: bool,
     pub schedule_time: Option<String>,
     pub matcher: PatternMatcher,
 }
@@ -107,6 +108,8 @@ impl DirectoryConfig {
             cfg.params = p.to_string();
         }
 
+        cfg.use_custom_params = j.get("use_custom_params").and_then(|v| v.as_bool()).unwrap_or(false);
+
         if let Some(Value::Object(s)) = j.get("schedule") {
             cfg.schedule_time = s.get("time").and_then(|v| v.as_str()).map(String::from);
         }
@@ -167,6 +170,7 @@ impl DirectoryConfig {
         if !self.params.is_empty() {
             j.insert("params".into(), Value::from(self.params.clone()));
         }
+        j.insert("use_custom_params".into(), Value::from(self.use_custom_params));
         if let Some(t) = &self.schedule_time {
             let mut s = serde_json::Map::new();
             s.insert("time".into(), Value::from(t.clone()));

@@ -173,6 +173,7 @@ pub struct DirConfigView {
     pub ctime_before: Option<String>,
     pub rename_rules: Vec<RenameRuleView>,
     pub params: String,
+    pub use_custom_params: bool,
     pub schedule_time: Option<String>,
 }
 

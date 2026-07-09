@@ -109,6 +109,7 @@ fn to_view(cfg: &DirectoryConfig, exists: bool) -> DirConfigView {
         rename_rules: cfg.rename_rules.iter().map(|(p,r)|
             RenameRuleView { pattern: p.clone(), replacement: r.clone() }).collect(),
         params: cfg.params.clone(),
+        use_custom_params: cfg.use_custom_params,
         schedule_time: cfg.schedule_time.clone(),
     }
 }
@@ -148,6 +149,7 @@ fn apply_view(path: &str, view: &DirConfigView) -> DirectoryConfig {
     cfg.ctime_before = view.ctime_before.clone();
     cfg.rename_rules = view.rename_rules.iter().map(|r| (r.pattern.clone(), r.replacement.clone())).collect();
     cfg.params = view.params.clone();
+    cfg.use_custom_params = view.use_custom_params;
     cfg.schedule_time = view.schedule_time.clone();
     cfg
 }

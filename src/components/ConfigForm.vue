@@ -10,35 +10,30 @@ const form = ref<DirConfigView>({ ...props.modelValue });
 watch(() => props.modelValue, (v) => { form.value = { ...v }; }, { deep: true });
 watch(form, () => emit("update:modelValue", { ...form.value }), { deep: true });
 
-// isCustom: true when params is NOT a template name (and not empty)
-const isCustom = ref(computeIsCustom(props.modelValue.params, props.templates));
-
-function computeIsCustom(params: string, tmpls: Template[]): boolean {
-  if (!params) return false;
-  return !tmpls.some(t => t.name === params);
-}
-
-watch(() => props.modelValue.params, (v) => {
-  isCustom.value = computeIsCustom(v, props.templates);
-});
+// isCustom reads directly from the data model (persisted in config file)
+const isCustom = computed(() => form.value.useCustomParams);
 
 function onCustomToggle(e: Event) {
   const checked = (e.target as HTMLInputElement).checked;
-  setCustom(checked);
+  if (checked) {
+    // template mode → custom mode: resolve template to actual params
+    const tmpl = props.templates.find(t => t.name === form.value.params);
+    if (tmpl) {
+      form.value.params = tmpl.params;
+    }
+    form.value.useCustomParams = true;
+  } else {
+    // custom mode → template mode: set params to first template name
+    if (props.templates.length > 0) {
+      form.value.params = props.templates[0].name;
+    }
+    form.value.useCustomParams = false;
+  }
 }
+
 function onParamInput(e: Event) {
   if (isCustom.value) {
     form.value.params = (e.target as HTMLInputElement).value;
-  }
-}
-function setCustom(val: boolean) {
-  isCustom.value = val;
-  if (!val) {
-    // Switching to template mode: set params to first template name
-    // If current params is already a template name, keep it
-    if (props.templates.length > 0 && !props.templates.some(t => t.name === form.value.params)) {
-      form.value.params = props.templates[0].name;
-    }
   }
 }
 

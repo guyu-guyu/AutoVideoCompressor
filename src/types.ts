@@ -45,7 +45,7 @@ export interface DirConfigView {
   maxSizeMb: number | null; minSizeMb: number | null;
   mtimeAfter: string | null; mtimeBefore: string | null;
   ctimeAfter: string | null; ctimeBefore: string | null;
-  renameRules: RenameRuleView[]; params: string; scheduleTime: string | null;
+  renameRules: RenameRuleView[]; params: string; useCustomParams: boolean; scheduleTime: string | null;
 }
 
 export interface Template { name: string; params: string; }
