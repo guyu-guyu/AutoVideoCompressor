@@ -1,0 +1,19 @@
+.gitignore
+  s_c85fd265739400::t_9a42ed18b1a9ad 1-36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "232e6be254d831c7ac96c0d524929433c04af3ab",
+  "prompts": {},
+  "sessions": {
+    "s_c85fd265739400": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ea1ef0d-7c05-4985-a46d-acea755d326f",
+        "model": "hy3"
+      },
+      "human_author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
