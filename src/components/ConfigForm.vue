@@ -8,7 +8,15 @@ const emit = defineEmits<{ "update:modelValue": [v: DirConfigView] }>();
 const form = ref<DirConfigView>({ ...props.modelValue });
 
 watch(() => props.modelValue, (v) => { form.value = { ...v }; }, { deep: true });
-watch(form, () => emit("update:modelValue", { ...form.value }), { deep: true });
+watch(form, () => {
+  // Fix: normalize empty number fields to null before emitting
+  // v-model.number returns "" when input is cleared, but TS types it as number|null
+  const data: Record<string, unknown> = { ...form.value };
+  if (data.minSizeMb === "" || data.minSizeMb === undefined) data.minSizeMb = null;
+  if (data.maxSizeMb === "" || data.maxSizeMb === undefined) data.maxSizeMb = null;
+  if (data.maxCompressSizeMb === "" || data.maxCompressSizeMb === undefined) data.maxCompressSizeMb = null;
+  emit("update:modelValue", data as typeof form.value);
+}, { deep: true });
 
 // isCustom reads directly from the data model (persisted in config file)
 const isCustom = computed(() => form.value.useCustomParams);
@@ -98,11 +106,17 @@ function removeRename(i: number) { form.value.renameRules.splice(i, 1); }
       <button @click="addExclude">＋ 添加</button>
     </fieldset>
 
+    <fieldset><legend>单次压缩限制</legend>
+      <div class="single-line">
+        <label>单次压缩最大尺寸 <input type="number" v-model.number="form.maxCompressSizeMb" placeholder="空=不限制" /></label>
+        <span class="hint">超过此总大小的文件将在下次压缩中被跳过</span>
+      </div>
+    </fieldset>
+
     <fieldset><legend>过滤 FILTERS</legend>
       <div class="grid">
         <label>最小 MB <input type="number" v-model.number="form.minSizeMb" /></label>
         <label>最大 MB <input type="number" v-model.number="form.maxSizeMb" /></label>
-        <label>单次压缩最大 MB <input type="number" v-model.number="form.maxCompressSizeMb" placeholder="空=不限制" /></label>
         <label>修改 ≥ <input v-model="form.mtimeAfter" placeholder="YYYY-MM-DD" /></label>
         <label>修改 ≤ <input v-model="form.mtimeBefore" placeholder="YYYY-MM-DD" /></label>
         <label>创建 ≥ <input v-model="form.ctimeAfter" placeholder="YYYY-MM-DD" /></label>
@@ -126,6 +140,10 @@ function removeRename(i: number) { form.value.renameRules.splice(i, 1); }
 .form fieldset { margin-bottom:10px; }
 .line { display:flex; gap:6px; align-items:center; margin-bottom:4px; }
 .grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+.single-line { display:flex; flex-direction:column; gap:4px; }
+.single-line label { display:flex; align-items:center; gap:8px; }
+.single-line input { flex:1; max-width:200px; }
+.hint { font-size:0.85em; color:#888; }
 .chk-label { display:block; margin-bottom:6px; cursor:pointer; user-select:none; }
 .param-row { display:flex; gap:8px; align-items:stretch; }
 .tmpl-select { min-width:160px; }
