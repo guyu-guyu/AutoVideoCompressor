@@ -135,6 +135,8 @@ pub struct DirCardInfo {
     pub last_run_time: String,
     pub last_run_result: String,
     pub next_run_time: String,
+    pub next_run_count: i32,
+    pub next_run_size: u64,
 }
 
 /// A single file in the preview table.
@@ -145,6 +147,7 @@ pub struct FilePreview {
     pub final_name: String,
     pub file_size: u64,
     pub cycle_risk: bool,
+    pub in_next_run: bool,
 }
 
 /// ffmpeg availability result. Mirrors FfmpegProbe.
@@ -171,6 +174,7 @@ pub struct DirConfigView {
     pub mtime_before: Option<String>,
     pub ctime_after: Option<String>,
     pub ctime_before: Option<String>,
+    pub max_compress_size_mb: Option<f64>,
     pub rename_rules: Vec<RenameRuleView>,
     pub params: String,
     pub use_custom_params: bool,

@@ -29,10 +29,12 @@ export interface DirCardInfo {
   path: string; enabled: boolean; badge: Badge; badgeDetail: string;
   fileCount: number; totalSize: number; paramsName: string; cycleRiskCount: number;
   lastRunTime: string; lastRunResult: string; nextRunTime: string;
+  nextRunCount: number; nextRunSize: number;
 }
 
 export interface FilePreview {
   relativePath: string; finalName: string; fileSize: number; cycleRisk: boolean;
+  inNextRun: boolean;
 }
 
 export interface FfmpegStatus { ready: boolean; version: string; error: string; }
@@ -45,7 +47,8 @@ export interface DirConfigView {
   maxSizeMb: number | null; minSizeMb: number | null;
   mtimeAfter: string | null; mtimeBefore: string | null;
   ctimeAfter: string | null; ctimeBefore: string | null;
-  renameRules: RenameRuleView[]; params: string; useCustomParams: boolean; scheduleTime: string | null;
+  renameRules: RenameRuleView[]; params: string; useCustomParams: boolean;
+  maxCompressSizeMb: number | null; scheduleTime: string | null;
 }
 
 export interface Template { name: string; params: string; }

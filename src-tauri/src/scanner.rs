@@ -17,6 +17,33 @@ pub struct ScanFile {
     pub cycle_risk: bool,
 }
 
+/// Compute which files will be compressed in the next run, respecting max_compress_size.
+/// Returns (files_in_next_run, files_exceeding_limit).
+/// When max_compress_size_bytes is None, all files are in the next run.
+pub fn compute_next_run_set(mut files: Vec<ScanFile>, max_compress_size_bytes: Option<u64>) -> (Vec<ScanFile>, Vec<ScanFile>) {
+    // Sort by relative path for deterministic order
+    files.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+
+    let max_bytes = match max_compress_size_bytes {
+        Some(b) if b > 0 => b,
+        _ => return (files, Vec::new()),
+    };
+
+    let mut in_run = Vec::new();
+    let mut skipped = Vec::new();
+    let mut accumulated: u64 = 0;
+
+    for f in files {
+        if accumulated + f.file_size <= max_bytes {
+            accumulated += f.file_size;
+            in_run.push(f);
+        } else {
+            skipped.push(f);
+        }
+    }
+    (in_run, skipped)
+}
+
 /// Scan a directory per its config. Mirrors FileScanner::scan.
 pub fn scan(config: &DirectoryConfig) -> Vec<ScanFile> {
     let mut out = Vec::new();

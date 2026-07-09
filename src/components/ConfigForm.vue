@@ -102,6 +102,7 @@ function removeRename(i: number) { form.value.renameRules.splice(i, 1); }
       <div class="grid">
         <label>最小 MB <input type="number" v-model.number="form.minSizeMb" /></label>
         <label>最大 MB <input type="number" v-model.number="form.maxSizeMb" /></label>
+        <label>单次压缩最大 MB <input type="number" v-model.number="form.maxCompressSizeMb" placeholder="空=不限制" /></label>
         <label>修改 ≥ <input v-model="form.mtimeAfter" placeholder="YYYY-MM-DD" /></label>
         <label>修改 ≤ <input v-model="form.mtimeBefore" placeholder="YYYY-MM-DD" /></label>
         <label>创建 ≥ <input v-model="form.ctimeAfter" placeholder="YYYY-MM-DD" /></label>

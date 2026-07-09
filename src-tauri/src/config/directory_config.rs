@@ -15,6 +15,7 @@ pub struct DirectoryConfig {
     pub rename_rules: Vec<(String, String)>,
     pub max_size_bytes: Option<u64>,
     pub min_size_bytes: Option<u64>,
+    pub max_compress_size_bytes: Option<u64>,
     pub mtime_after: Option<String>,
     pub mtime_before: Option<String>,
     pub ctime_after: Option<String>,
@@ -87,6 +88,9 @@ impl DirectoryConfig {
             if let Some(mb) = f.get("min_size_mb").and_then(|v| v.as_f64()) {
                 cfg.min_size_bytes = Some((mb * 1024.0 * 1024.0) as u64);
             }
+            if let Some(mb) = f.get("max_compress_size_mb").and_then(|v| v.as_f64()) {
+                cfg.max_compress_size_bytes = Some((mb * 1024.0 * 1024.0) as u64);
+            }
             cfg.mtime_after = f.get("mtime_after").and_then(|v| v.as_str()).map(String::from);
             cfg.mtime_before = f.get("mtime_before").and_then(|v| v.as_str()).map(String::from);
             cfg.ctime_after = f.get("ctime_after").and_then(|v| v.as_str()).map(String::from);
@@ -150,6 +154,9 @@ impl DirectoryConfig {
         }
         if let Some(b) = self.min_size_bytes {
             filters.insert("min_size_mb".into(), Value::from(b as f64 / (1024.0 * 1024.0)));
+        }
+        if let Some(b) = self.max_compress_size_bytes {
+            filters.insert("max_compress_size_mb".into(), Value::from(b as f64 / (1024.0 * 1024.0)));
         }
         if let Some(v) = &self.mtime_after { filters.insert("mtime_after".into(), Value::from(v.clone())); }
         if let Some(v) = &self.mtime_before { filters.insert("mtime_before".into(), Value::from(v.clone())); }

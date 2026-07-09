@@ -102,6 +102,7 @@ fn to_view(cfg: &DirectoryConfig, exists: bool) -> DirConfigView {
         exclude: cfg.exclude_patterns.clone(),
         max_size_mb: cfg.max_size_bytes.map(|b| b as f64 / (1024.0*1024.0)),
         min_size_mb: cfg.min_size_bytes.map(|b| b as f64 / (1024.0*1024.0)),
+        max_compress_size_mb: cfg.max_compress_size_bytes.map(|b| b as f64 / (1024.0*1024.0)),
         mtime_after: cfg.mtime_after.clone(),
         mtime_before: cfg.mtime_before.clone(),
         ctime_after: cfg.ctime_after.clone(),
@@ -143,6 +144,7 @@ fn apply_view(path: &str, view: &DirConfigView) -> DirectoryConfig {
     cfg.exclude_patterns = view.exclude.clone();
     cfg.max_size_bytes = view.max_size_mb.map(|m| (m*1024.0*1024.0) as u64);
     cfg.min_size_bytes = view.min_size_mb.map(|m| (m*1024.0*1024.0) as u64);
+    cfg.max_compress_size_bytes = view.max_compress_size_mb.map(|m| (m*1024.0*1024.0) as u64);
     cfg.mtime_after = view.mtime_after.clone();
     cfg.mtime_before = view.mtime_before.clone();
     cfg.ctime_after = view.ctime_after.clone();
@@ -192,12 +194,26 @@ pub fn open_config_in_editor(app: tauri::AppHandle, path: String) -> AppResult<(
 #[tauri::command]
 pub fn scan_directory(path: String) -> Vec<FilePreview> {
     let cfg = DirectoryConfig::load(&path);
-    scanner::scan(&cfg).into_iter().map(|f| FilePreview {
+    let all = scanner::scan(&cfg);
+    let (in_run, skipped) = scanner::compute_next_run_set(all, cfg.max_compress_size_bytes);
+    let mut out: Vec<FilePreview> = in_run.into_iter().map(|f| FilePreview {
         relative_path: f.relative_path,
         final_name: f.final_name,
         file_size: f.file_size,
         cycle_risk: f.cycle_risk,
-    }).collect()
+        in_next_run: true,
+    }).collect();
+    // Add skipped files too, with in_next_run = false
+    for f in skipped {
+        out.push(FilePreview {
+            relative_path: f.relative_path,
+            final_name: f.final_name,
+            file_size: f.file_size,
+            cycle_risk: f.cycle_risk,
+            in_next_run: false,
+        });
+    }
+    out
 }
 
 #[tauri::command]

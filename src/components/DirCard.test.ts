@@ -10,7 +10,8 @@ function card(overrides: Partial<DirCardInfo> = {}): DirCardInfo {
   return {
     path: "D:/x", enabled: true, badge: "valid", badgeDetail: "",
     fileCount: 3, totalSize: 1024, paramsName: "H.265", cycleRiskCount: 0,
-    lastRunTime: "", lastRunResult: "", nextRunTime: "今天 03:00", ...overrides,
+    lastRunTime: "", lastRunResult: "", nextRunTime: "今天 03:00",
+    nextRunCount: 0, nextRunSize: 0, ...overrides,
   };
 }
 

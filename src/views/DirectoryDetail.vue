@@ -2,6 +2,7 @@
 import { ref, computed } from "vue";
 import { useAppStore } from "../stores/app";
 import { api } from "../api/tauri";
+import { formatFileSize } from "../util/format";
 import TabPreview from "../components/tabs/TabPreview.vue";
 import TabConfig from "../components/tabs/TabConfig.vue";
 import TabHistory from "../components/tabs/TabHistory.vue";
@@ -38,8 +39,13 @@ async function stopIt() {
       ({{ store.progress[dirPath].completed }}/{{ store.progress[dirPath].total }})
     </div>
     <div v-if="card" class="summary">
-      匹配 {{ card.fileCount }} · 参数 {{ card.paramsName || "默认" }} · 下次 {{ card.nextRunTime }}
-      <span v-if="card.cycleRiskCount">· ⚠ {{ card.cycleRiskCount }} 循环风险</span>
+      <div>匹配 {{ card.fileCount }} 文件 · {{ formatFileSize(card.totalSize) }} · 参数 {{ card.paramsName || "默认" }} · 下次 {{ card.nextRunTime }}
+        <span v-if="card.cycleRiskCount">· ⚠ {{ card.cycleRiskCount }} 循环风险</span>
+      </div>
+      <div v-if="card.nextRunCount > 0" class="next-run-summary">
+        下次压缩: <strong>{{ card.nextRunCount }}</strong> 文件 · {{ formatFileSize(card.nextRunSize) }}
+        <template v-if="card.nextRunCount < card.fileCount">({{ card.fileCount - card.nextRunCount }} 文件超限跳过)</template>
+      </div>
       <div>上次: {{ card.lastRunTime || "—" }} {{ card.lastRunResult }}</div>
     </div>
     <div class="tabs">
@@ -64,4 +70,5 @@ async function stopIt() {
 .stop-btn { background:#e33; color:#fff; border:none; border-radius:4px; padding:4px 12px; cursor:pointer; }
 .stop-btn:hover { background:#c11; }
 .progress-bar { background:#e8f4ff; border-radius:6px; padding:6px 12px; margin-bottom:10px; font-size:0.9em; color:#06c; }
+.next-run-summary { color:#06c; font-weight:600; margin-top:2px; }
 </style>

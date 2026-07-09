@@ -66,6 +66,10 @@ async function removeIt(e: Event) {
       {{ card.fileCount }} 文件 · {{ formatFileSize(card.totalSize) }}
       <template v-if="card.paramsName"> · 参数 {{ card.paramsName }}</template>
     </div>
+    <div v-if="card.nextRunCount > 0" class="next-run-info">
+      下次压缩: <strong>{{ card.nextRunCount }}</strong> 文件 · {{ formatFileSize(card.nextRunSize) }}
+      <template v-if="card.nextRunCount < card.fileCount">({{ card.fileCount - card.nextRunCount }} 文件超限跳过)</template>
+    </div>
     <div v-if="card.cycleRiskCount > 0" class="warn">⚠ {{ card.cycleRiskCount }} 个循环风险</div>
     <div class="row3">
       <span>上次: {{ card.lastRunTime || "—" }} {{ card.lastRunResult }}</span>
@@ -87,6 +91,7 @@ async function removeIt(e: Event) {
 .row3 { display:flex; justify-content:space-between; margin-top:6px;
   border-top:1px dashed #ddd; padding-top:6px; font-size:0.9em; }
 .next { color:#06c; font-weight:600; }
+.next-run-info { margin-top:4px; font-size:0.85em; color:#06c; }
 .stop-btn { background:#e33; color:#fff; border:none; border-radius:4px; padding:4px 8px; cursor:pointer; }
 .stop-btn:hover { background:#c11; }
 .del-btn { background:none; border:none; cursor:pointer; font-size:1.1em; padding:2px 6px; opacity:0.4; }

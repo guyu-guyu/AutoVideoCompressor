@@ -128,13 +128,16 @@ impl AppCore {
             let overlap = overlaps.get(i).copied().unwrap_or(false);
             let (badge, detail) = compute_badge(&d.path, overlap);
             let cfg = DirectoryConfig::load(&d.path);
-            let (file_count, total_size, cycle_risk) = if cfg.valid {
+            let (file_count, total_size, cycle_risk, next_run_count, next_run_size) = if cfg.valid {
                 let files = scanner::scan(&cfg);
+                let fcount = files.len();
                 let size: u64 = files.iter().map(|f| f.file_size).sum();
                 let risk = files.iter().filter(|f| f.cycle_risk).count() as i32;
-                (files.len() as i32, size, risk)
+                let (in_run, _) = scanner::compute_next_run_set(files, cfg.max_compress_size_bytes);
+                let nr_size: u64 = in_run.iter().map(|f| f.file_size).sum();
+                (fcount as i32, size, risk, in_run.len() as i32, nr_size)
             } else {
-                (0, 0, 0)
+                (0, 0, 0, 0, 0)
             };
             let (last_time, last_result) = {
                 let mut cache = self.last_runs.lock().unwrap();
@@ -164,6 +167,8 @@ impl AppCore {
                 last_run_time: last_time,
                 last_run_result: last_result,
                 next_run_time: self.format_next_run(&d.path),
+                next_run_count,
+                next_run_size,
             });
         }
         out
@@ -219,7 +224,8 @@ impl AppCore {
 
         let dir_params = dir_config.params.clone();
         let matcher = dir_config.matcher.clone();
-        let files = scanner::scan(&dir_config);
+        let all_files = scanner::scan(&dir_config);
+        let (files, _skipped) = scanner::compute_next_run_set(all_files, dir_config.max_compress_size_bytes);
 
         let (ffmpeg_path, timeout) = {
             let c = self.config.lock().unwrap();
