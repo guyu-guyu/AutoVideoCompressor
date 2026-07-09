@@ -114,7 +114,7 @@ fn to_view(cfg: &DirectoryConfig, exists: bool) -> DirConfigView {
 }
 
 #[tauri::command]
-pub fn get_directory_config(path: String) -> DirConfigView {
+pub fn get_directory_config(core: Core, path: String) -> DirConfigView {
     let exists = DirectoryConfig::config_path(&path).exists();
     if exists {
         to_view(&DirectoryConfig::load(&path), true)
@@ -125,6 +125,11 @@ pub fn get_directory_config(path: String) -> DirConfigView {
         cfg.include_patterns = vec!["*.mp4".into(),"*.mov".into(),"*.avi".into(),"*.mkv".into()];
         cfg.exclude_patterns = vec!["*[compress]*".into()];
         cfg.rename_rules = vec![("^(.+)(\\.[^.]+)$".into(), "$1[compress]$2".into())];
+        // Default params = first template name from global config
+        let templates = core.config.lock().unwrap().templates.clone();
+        if let Some(first) = templates.first() {
+            cfg.params = first.0.clone();
+        }
         to_view(&cfg, false)
     }
 }

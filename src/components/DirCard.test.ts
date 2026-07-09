@@ -15,7 +15,7 @@ function card(overrides: Partial<DirCardInfo> = {}): DirCardInfo {
 }
 
 describe("DirCard", () => {
-  beforeEach(() => setActivePinia(createPinia()));
+  beforeEach(() => { const _ = setActivePinia(createPinia()); });
   it("shows valid badge", () => {
     const w = mount(DirCard, { props: { card: card() } });
     expect(w.text()).toContain("● 有效");

@@ -1,22 +1,64 @@
 <script setup lang="ts">
-import { reactive, watch } from "vue";
+import { ref, watch, computed } from "vue";
 import type { DirConfigView, Template } from "../types";
 
 const props = defineProps<{ modelValue: DirConfigView; templates: Template[] }>();
 const emit = defineEmits<{ "update:modelValue": [v: DirConfigView] }>();
 
-const form = reactive<DirConfigView>({ ...props.modelValue });
-const custom = reactive({ useCustomParams: !props.templates.some(t => t.name === props.modelValue.params) && props.modelValue.params !== "" });
+const form = ref<DirConfigView>({ ...props.modelValue });
 
-watch(() => props.modelValue, (v) => { Object.assign(form, v); }, { deep: true });
-watch(form, () => emit("update:modelValue", { ...form }), { deep: true });
+watch(() => props.modelValue, (v) => { form.value = { ...v }; }, { deep: true });
+watch(form, () => emit("update:modelValue", { ...form.value }), { deep: true });
 
-function addInclude() { form.include.push(""); }
-function removeInclude(i: number) { form.include.splice(i, 1); }
-function addExclude() { form.exclude.push(""); }
-function removeExclude(i: number) { form.exclude.splice(i, 1); }
-function addRename() { form.renameRules.push({ pattern: "", replacement: "" }); }
-function removeRename(i: number) { form.renameRules.splice(i, 1); }
+// isCustom: true when params is NOT a template name (and not empty)
+const isCustom = ref(computeIsCustom(props.modelValue.params, props.templates));
+
+function computeIsCustom(params: string, tmpls: Template[]): boolean {
+  if (!params) return false;
+  return !tmpls.some(t => t.name === params);
+}
+
+watch(() => props.modelValue.params, (v) => {
+  isCustom.value = computeIsCustom(v, props.templates);
+});
+
+function onCustomToggle(e: Event) {
+  const checked = (e.target as HTMLInputElement).checked;
+  setCustom(checked);
+}
+function onParamInput(e: Event) {
+  if (isCustom.value) {
+    form.value.params = (e.target as HTMLInputElement).value;
+  }
+}
+function setCustom(val: boolean) {
+  isCustom.value = val;
+  if (!val) {
+    // Switching to template mode: set params to first template name
+    // If current params is already a template name, keep it
+    if (props.templates.length > 0 && !props.templates.some(t => t.name === form.value.params)) {
+      form.value.params = props.templates[0].name;
+    }
+  }
+}
+
+function onTemplateSelect(e: Event) {
+  const target = e.target as HTMLSelectElement;
+  form.value.params = target.value;
+}
+
+// Current selected template's resolved params (for readonly display)
+const selectedTemplateParams = computed(() => {
+  const t = props.templates.find(t => t.name === form.value.params);
+  return t ? t.params : "";
+});
+
+function addInclude() { form.value.include.push(""); }
+function removeInclude(i: number) { form.value.include.splice(i, 1); }
+function addExclude() { form.value.exclude.push(""); }
+function removeExclude(i: number) { form.value.exclude.splice(i, 1); }
+function addRename() { form.value.renameRules.push({ pattern: "", replacement: "" }); }
+function removeRename(i: number) { form.value.renameRules.splice(i, 1); }
 </script>
 
 <template>
@@ -26,11 +68,25 @@ function removeRename(i: number) { form.renameRules.splice(i, 1); }
     </fieldset>
 
     <fieldset><legend>压缩参数</legend>
-      <label><input type="checkbox" v-model="custom.useCustomParams" /> 自定义参数</label>
-      <select v-if="!custom.useCustomParams" v-model="form.params">
-        <option v-for="t in templates" :key="t.name" :value="t.name">{{ t.name }}</option>
-      </select>
-      <input v-else v-model="form.params" placeholder="裸 ffmpeg 参数" style="width:100%" />
+      <label class="chk-label">
+        <input type="checkbox" :checked="isCustom" @change="onCustomToggle" />
+        自定义参数
+      </label>
+      <div class="param-row">
+        <select :disabled="isCustom" :value="form.params" @change="onTemplateSelect" class="tmpl-select">
+          <option v-for="t in templates" :key="t.name" :value="t.name">{{ t.name }}</option>
+        </select>
+        <input
+          :value="isCustom ? form.params : selectedTemplateParams"
+          @input="onParamInput"
+          :readonly="!isCustom"
+          :placeholder="isCustom ? '裸 ffmpeg 参数，如 -c:v libx265 -crf 18' : ''"
+          class="param-input"
+        />
+      </div>
+      <div v-if="!isCustom && selectedTemplateParams" class="tmpl-hint">
+        当前选择: <code>{{ selectedTemplateParams }}</code>
+      </div>
     </fieldset>
 
     <fieldset><legend>白名单 INCLUDE(必需)</legend>
@@ -74,4 +130,11 @@ function removeRename(i: number) { form.renameRules.splice(i, 1); }
 .form fieldset { margin-bottom:10px; }
 .line { display:flex; gap:6px; align-items:center; margin-bottom:4px; }
 .grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+.chk-label { display:block; margin-bottom:6px; cursor:pointer; user-select:none; }
+.param-row { display:flex; gap:8px; align-items:stretch; }
+.tmpl-select { min-width:160px; }
+.param-input { flex:1; }
+.param-input[readonly] { background:#f5f5f5; color:#666; cursor:default; }
+.tmpl-hint { margin-top:4px; font-size:0.85em; color:#888; }
+.tmpl-hint code { background:#f0f0f0; padding:1px 6px; border-radius:3px; font-size:0.95em; }
 </style>

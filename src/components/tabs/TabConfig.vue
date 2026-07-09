@@ -31,7 +31,10 @@ async function createDefault() {
   creating.value = true;
   error.value = "";
   try {
-    // Use current view (which has default values from get_directory_config) to create
+    // Ensure params is set to first template name before creating
+    if (!view.value.params && templates.value.length > 0) {
+      view.value.params = templates.value[0].name;
+    }
     await api.createDirectoryConfig(props.dirPath, view.value);
     await load(); // reload → now exists = true, will show the form
   } catch (e) { error.value = String(e); }
