@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/nicoverbruggen/tauri-v2-schema/refs/heads/main/tauri.conf.schema.json",
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "AutoCompress",
   "version": "1.0.0",
   "identifier": "com.autocompress.app",
