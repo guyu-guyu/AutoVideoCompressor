@@ -1,0 +1,43 @@
+src-tauri/src/compressor/file_compare.rs
+  s_e16b2529e01196::t_81cbaadd075eb2 8-11
+  s_e16b2529e01196::t_6302991bdbfc11 17,23
+  s_e16b2529e01196::t_962a0db887255b 24-27,33,53,55,79,81-82,85,98,100-101,115,117-118
+src-tauri/src/app.rs
+  s_e16b2529e01196::t_4b228cee1391de 47-50,52-57
+  s_e16b2529e01196::t_aa64f87f3e3a90 51,58
+  s_e16b2529e01196::t_c8cdd41e3e14a5 59-61
+  s_e16b2529e01196::t_d61d55207f4943 9
+  s_e16b2529e01196::t_c9ae39c3f6fe3e 250-260,271-273,287-299,304,307,322-326,329-336,349-353,357
+src-tauri/src/scheduler.rs
+  s_e16b2529e01196::t_8b32fcc32736d7 1
+  s_e16b2529e01196::t_87d6868e1caee9 26,71,122
+src-tauri/src/compressor/engine.rs
+  s_e16b2529e01196::t_3b41d9aaae989c 2
+  s_e16b2529e01196::t_5e842aff73b9bc 97-100,103-104
+src-tauri/src/types.rs
+  s_e16b2529e01196::t_42f98d556f526c 28,39
+src-tauri/src/commands.rs
+  s_e16b2529e01196::t_6c1c052b0fa91a 125-133,139-156
+src-tauri/src/config/global_config.rs
+  s_e16b2529e01196::t_b51d9928def24a 167
+src-tauri/src/logger.rs
+  s_e16b2529e01196::t_6a0b8853393965 72-78,172-174,235-246,248-253,258-271
+src-tauri/src/util/fs_util.rs
+  s_e16b2529e01196::t_29c564189bf51f 45-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "1e5d234d1d83992b7405cfaa19660021acca1a62",
+  "prompts": {},
+  "sessions": {
+    "s_e16b2529e01196": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "21665783-1ac2-4e25-95ac-eee8db4242be",
+        "model": "claude-opus-4.7"
+      },
+      "human_author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
