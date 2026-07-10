@@ -1,0 +1,11 @@
+[toolchain]
+# 使用 MSVC 版 Rust 工具链而非 GNU 版。
+# 原因：Tauri 底层依赖 webview2-com-sys 仅在 target_env = "msvc" 时将
+# WebView2Loader 静态链接进 exe（kind = "static"）；GNU 版下会强制走
+# 动态链接（link(name = "WebView2Loader.dll")），导致最终产物必须携带
+# 一个外部 WebView2Loader.dll 才能运行，无法做到单文件可执行。
+#
+# 使用要求：本机需已安装 Visual Studio Build Tools（"使用 C++ 的桌面开发"
+# 组件，提供 MSVC 版 link.exe）。安装后 rustup 会按此文件自动切换/安装
+# 对应工具链，无需手动指定 --target。
+channel = "stable-x86_64-pc-windows-msvc"

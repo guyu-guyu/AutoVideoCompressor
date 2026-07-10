@@ -1,8 +1,8 @@
 [package]
 name = "autocompress"
-version = "1.0.0"
+version = "0.1.0"
 description = "AutoCompress - Video compression tool"
-authors = ["you"]
+authors = ["guyu"]
 edition = "2021"
 
 [lib]
