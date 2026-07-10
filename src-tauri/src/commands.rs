@@ -122,38 +122,38 @@ pub fn get_directory_config(core: Core, path: String) -> DirConfigView {
         to_view(&DirectoryConfig::load(&path), true)
     } else {
         // default template view, not written to disk yet
-        let mut cfg = DirectoryConfig::default();
-        cfg.directory_path = path.clone();
-        cfg.include_patterns = vec!["*.mp4".into(),"*.mov".into(),"*.avi".into(),"*.mkv".into()];
-        cfg.exclude_patterns = vec!["*[compress]*".into()];
-        cfg.rename_rules = vec![("^(.+)(\\.[^.]+)$".into(), "$1[compress]$2".into())];
-        // Default params = first template name from global config
-        let templates = core.config.lock().unwrap().templates.clone();
-        if let Some(first) = templates.first() {
-            cfg.params = first.0.clone();
-        }
+        let first_template = core.config.lock().unwrap().templates.first().map(|t| t.0.clone());
+        let cfg = DirectoryConfig {
+            directory_path: path,
+            include_patterns: vec!["*.mp4".into(), "*.mov".into(), "*.avi".into(), "*.mkv".into()],
+            exclude_patterns: vec!["*[compress]*".into()],
+            rename_rules: vec![("^(.+)(\\.[^.]+)$".into(), "$1[compress]$2".into())],
+            params: first_template.unwrap_or_default(),
+            ..Default::default()
+        };
         to_view(&cfg, false)
     }
 }
 
 fn apply_view(path: &str, view: &DirConfigView) -> DirectoryConfig {
-    let mut cfg = DirectoryConfig::default();
-    cfg.directory_path = path.to_string();
-    cfg.valid = true;
-    cfg.include_patterns = view.include.clone();
-    cfg.exclude_patterns = view.exclude.clone();
-    cfg.max_size_bytes = view.max_size_mb.map(|m| (m*1024.0*1024.0) as u64);
-    cfg.min_size_bytes = view.min_size_mb.map(|m| (m*1024.0*1024.0) as u64);
-    cfg.max_compress_size_bytes = view.max_compress_size_mb.map(|m| (m*1024.0*1024.0) as u64);
-    cfg.mtime_after = view.mtime_after.clone();
-    cfg.mtime_before = view.mtime_before.clone();
-    cfg.ctime_after = view.ctime_after.clone();
-    cfg.ctime_before = view.ctime_before.clone();
-    cfg.rename_rules = view.rename_rules.iter().map(|r| (r.pattern.clone(), r.replacement.clone())).collect();
-    cfg.params = view.params.clone();
-    cfg.use_custom_params = view.use_custom_params;
-    cfg.schedule_time = view.schedule_time.clone();
-    cfg
+    DirectoryConfig {
+        directory_path: path.to_string(),
+        valid: true,
+        include_patterns: view.include.clone(),
+        exclude_patterns: view.exclude.clone(),
+        max_size_bytes: view.max_size_mb.map(|m| (m * 1024.0 * 1024.0) as u64),
+        min_size_bytes: view.min_size_mb.map(|m| (m * 1024.0 * 1024.0) as u64),
+        max_compress_size_bytes: view.max_compress_size_mb.map(|m| (m * 1024.0 * 1024.0) as u64),
+        mtime_after: view.mtime_after.clone(),
+        mtime_before: view.mtime_before.clone(),
+        ctime_after: view.ctime_after.clone(),
+        ctime_before: view.ctime_before.clone(),
+        rename_rules: view.rename_rules.iter().map(|r| (r.pattern.clone(), r.replacement.clone())).collect(),
+        params: view.params.clone(),
+        use_custom_params: view.use_custom_params,
+        schedule_time: view.schedule_time.clone(),
+        ..Default::default()
+    }
 }
 
 #[tauri::command]

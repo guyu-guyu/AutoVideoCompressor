@@ -6,15 +6,13 @@ use crate::logger::{Logger, now_for_filename};
 use crate::scanner;
 use crate::scheduler::{compute_next_run, DirSchedule, Scheduler};
 use crate::types::*;
-use crate::util::fs_util::has_enough_space;
+use crate::util::fs_util::{has_enough_space, safe_delete_retry};
 use crate::util::string_util::format_file_size;
 use chrono::{Datelike, Local, Timelike};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
-
-const FALLBACK_PARAMS: &str = "-c:v libx264 -crf 23 -preset fast -c:a aac -b:a 128k";
 
 pub struct AppCore {
     pub config: Mutex<GlobalConfig>,
@@ -43,6 +41,21 @@ pub fn compute_badge(dir: &str, overlap: bool) -> (String, String) {
     match &cfg.schedule_time {
         Some(t) if !t.is_empty() => ("valid".into(), String::new()),
         _ => ("unscheduled".into(), String::new()),
+    }
+}
+
+/// Build a FileResult for a file that was NOT compressed (skipped or failed
+/// before ffmpeg ran). Original file is untouched, so `final_*` == original.
+fn make_untouched_result(sf: &scanner::ScanFile, status: FileStatus, error_message: &str) -> FileResult {
+    FileResult {
+        name: sf.relative_path.clone(),
+        path: sf.absolute_path.clone(),
+        final_name: sf.relative_path.clone(),
+        final_path: sf.absolute_path.clone(),
+        original_size: sf.file_size,
+        status,
+        error_message: error_message.to_string(),
+        ..Default::default()
     }
 }
 
@@ -234,13 +247,17 @@ impl AppCore {
         };
 
         let mut logger = Logger::new(dir);
-        let mut summary = RunSummary::default();
-        summary.run_id = now_for_filename();
-        summary.start_time = crate::util::string_util::now_iso_public();
-        summary.directories.push(DirectoryResult {
-            path: dir.to_string(), config_valid: true,
-            files_total: files.len() as i32, files_processed: 0,
-        });
+        let mut summary = RunSummary {
+            run_id: now_for_filename(),
+            start_time: crate::util::string_util::now_iso_public(),
+            directories: vec![DirectoryResult {
+                path: dir.to_string(),
+                config_valid: true,
+                files_total: files.len() as i32,
+                files_processed: 0,
+            }],
+            ..Default::default()
+        };
         logger.begin_run(&summary);
 
         if !files.is_empty() {
@@ -251,6 +268,9 @@ impl AppCore {
 
         let mut all_results = Vec::new();
         let mut was_cancelled = false;
+        // Tracks the single temp file of the file currently being compressed (at most
+        // one exists at a time in this serial loop). Used to clean it up on cancel.
+        let mut current_temp: Option<std::path::PathBuf>;
         for (fi, sf) in files.iter().enumerate() {
             // Check cancellation before processing each file
             if self.cancel_flag.load(Ordering::SeqCst) {
@@ -264,20 +284,27 @@ impl AppCore {
             }));
 
             let resolved = self.template_manager.lock().unwrap().resolve(&dir_params);
-            let params = if resolved.is_empty() { FALLBACK_PARAMS.to_string() } else { resolved };
+            if resolved.is_empty() {
+                // No ffmpeg params resolved (empty template/param name): abort this
+                // file and record a failed result with the reason.
+                let fail = make_untouched_result(
+                    sf,
+                    FileStatus::Failed,
+                    "未解析到压缩参数（参数模板为空或不存在），跳过该文件",
+                );
+                logger.log_file_result(&fail);
+                all_results.push(fail);
+                continue;
+            }
+            let params = resolved;
 
             let orig = Path::new(&sf.absolute_path);
             let parent = orig.parent().map(|p| p.to_path_buf()).unwrap_or_default();
             let temp_path = parent.join(&sf.temp_name);
+            current_temp = Some(temp_path.clone());
 
             if !has_enough_space(&parent, sf.file_size / 2) {
-                let mut skip = FileResult::default();
-                skip.name = sf.relative_path.clone();
-                skip.path = sf.absolute_path.clone();
-                skip.final_name = sf.relative_path.clone();
-                skip.final_path = sf.absolute_path.clone();
-                skip.original_size = sf.file_size;
-                skip.status = FileStatus::SkippedOther;
+                let skip = make_untouched_result(sf, FileStatus::SkippedOther, "");
                 logger.log_file_result(&skip);
                 all_results.push(skip);
                 continue;
@@ -292,10 +319,21 @@ impl AppCore {
             };
             let cres = engine::compress(&cparams, &self.cancel_flag);
 
-            // If cancelled during compression, delete the temp file and break
+            // If cancelled during compression, delete the temp file we just created
+            // for this file and break. Use a retrying delete: on Windows the OS may
+            // briefly hold the file lock after ffmpeg is killed, so a naive
+            // remove_file often fails silently (this was the root cause of the
+            // "tmp remains after stop" bug).
             if cres.cancelled {
                 was_cancelled = true;
-                let _ = std::fs::remove_file(&temp_path);
+                if let Some(p) = current_temp.take() {
+                    if !safe_delete_retry(&p, 5) {
+                        eprintln!(
+                            "[autocompress] failed to remove temp file after cancel: {}",
+                            p.display()
+                        );
+                    }
+                }
                 break;
             }
 
@@ -308,12 +346,15 @@ impl AppCore {
                 std::fs::metadata(&temp_path).map(|m| m.len()).unwrap_or(0)
             } else { 0 };
 
+            // Compute the final (renamed) path ONCE, based on the relative path,
+            // so comparison/rename and the recorded result stay consistent.
+            let final_name = matcher.apply_rename(&sf.relative_path);
+            let final_path = parent.join(&final_name).to_string_lossy().to_string();
+
             let mut fr = file_compare::compare_and_cleanup(
                 &sf.absolute_path, sf.file_size,
                 &temp_path.to_string_lossy(), compressed_size,
-                &matcher, cres.exit_code, cres.duration_ms);
-            fr.final_name = matcher.apply_rename(&sf.relative_path);
-            fr.final_path = parent.join(&fr.final_name).to_string_lossy().to_string();
+                &final_path, cres.exit_code, cres.duration_ms);
             fr.cycle_risk = sf.cycle_risk;
             logger.log_file_result(&fr);
             all_results.push(fr);

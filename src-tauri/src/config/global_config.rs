@@ -164,6 +164,7 @@ impl GlobalConfig {
     pub fn detect_overlaps(&self) -> Vec<bool> {
         let n = self.directories.len();
         let mut flags = vec![false; n];
+        #[allow(clippy::needless_range_loop)]
         for i in 0..n {
             let a = normalize(&self.directories[i].path);
             for j in (i + 1)..n {

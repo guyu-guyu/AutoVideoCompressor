@@ -69,7 +69,13 @@ impl Logger {
                 format_file_size(r.compressed_size as i64)
             ),
             FileStatus::Failed => format!(
-                "❌ {} 压缩失败 (退出码: {})", r.name, r.ffmpeg_exit_code
+                "❌ {} 压缩失败 (退出码: {}){}",
+                r.name, r.ffmpeg_exit_code,
+                if r.error_message.is_empty() {
+                    String::new()
+                } else {
+                    format!(" 原因: {}", r.error_message)
+                }
             ),
             FileStatus::SkippedOther => format!("ℹ {} 跳过", r.name),
         };
@@ -130,9 +136,6 @@ impl Logger {
         }
     }
 
-    pub fn log_directory(&self) -> String {
-        self.log_dir.to_string_lossy().to_string()
-    }
 }
 
 /// Machine-readable JSON block. Mirrors Logger::summaryToJsonBlock (snake_case keys).
@@ -166,6 +169,9 @@ fn summary_to_json_block(run_id: &str, summary: &RunSummary) -> String {
         fm.insert("compressed_size".into(), Value::from(f.compressed_size));
         fm.insert("saved_bytes".into(), Value::from(f.saved_bytes));
         fm.insert("cycle_risk".into(), Value::from(f.cycle_risk));
+        if !f.error_message.is_empty() {
+            fm.insert("error_message".into(), Value::from(f.error_message.clone()));
+        }
         let status = match f.status {
             FileStatus::Success => "success",
             FileStatus::SkippedLarger => "skipped_larger",
@@ -226,34 +232,43 @@ fn extract_json_block(text: &str) -> Option<String> {
 
 fn parse_summary_json(json: &str) -> Option<RunSummary> {
     let v: Value = serde_json::from_str(json).ok()?;
-    let mut s = RunSummary::default();
-    s.run_id = v.get("run_id").and_then(|x| x.as_str()).unwrap_or("").to_string();
-    s.start_time = v.get("start_time").and_then(|x| x.as_str()).unwrap_or("").to_string();
-    s.end_time = v.get("end_time").and_then(|x| x.as_str()).unwrap_or("").to_string();
-    s.duration_seconds = v.get("duration_seconds").and_then(|x| x.as_i64()).unwrap_or(0) as i32;
+    let get_str = |obj: &Value, k: &str| obj.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string();
+    let get_i64 = |obj: &Value, k: &str| obj.get(k).and_then(|x| x.as_i64()).unwrap_or(0);
+    let get_u64 = |obj: &Value, k: &str| obj.get(k).and_then(|x| x.as_u64()).unwrap_or(0);
+    let get_bool = |obj: &Value, k: &str| obj.get(k).and_then(|x| x.as_bool()).unwrap_or(false);
+
+    let mut s = RunSummary {
+        run_id: get_str(&v, "run_id"),
+        start_time: get_str(&v, "start_time"),
+        end_time: get_str(&v, "end_time"),
+        duration_seconds: get_i64(&v, "duration_seconds") as i32,
+        ..Default::default()
+    };
     if let Some(sum) = v.get("summary") {
-        s.success_count = sum.get("success").and_then(|x| x.as_i64()).unwrap_or(0) as i32;
-        s.skipped_larger_count = sum.get("skipped_larger").and_then(|x| x.as_i64()).unwrap_or(0) as i32;
-        s.failed_count = sum.get("failed").and_then(|x| x.as_i64()).unwrap_or(0) as i32;
-        s.skipped_other_count = sum.get("skipped_other").and_then(|x| x.as_i64()).unwrap_or(0) as i32;
-        s.total_saved_bytes = sum.get("total_saved_bytes").and_then(|x| x.as_i64()).unwrap_or(0);
-        s.cycle_risk_count = sum.get("cycle_risk_count").and_then(|x| x.as_i64()).unwrap_or(0) as i32;
+        s.success_count = get_i64(sum, "success") as i32;
+        s.skipped_larger_count = get_i64(sum, "skipped_larger") as i32;
+        s.failed_count = get_i64(sum, "failed") as i32;
+        s.skipped_other_count = get_i64(sum, "skipped_other") as i32;
+        s.total_saved_bytes = get_i64(sum, "total_saved_bytes");
+        s.cycle_risk_count = get_i64(sum, "cycle_risk_count") as i32;
     }
     // files (for expandable detail in history tab)
     if let Some(Value::Array(arr)) = v.get("files") {
         for f in arr {
-            let mut fr = crate::types::FileResult::default();
-            fr.name = f.get("name").and_then(|x| x.as_str()).unwrap_or("").to_string();
-            fr.final_name = f.get("final_name").and_then(|x| x.as_str()).unwrap_or("").to_string();
-            fr.original_size = f.get("original_size").and_then(|x| x.as_u64()).unwrap_or(0);
-            fr.compressed_size = f.get("compressed_size").and_then(|x| x.as_u64()).unwrap_or(0);
-            fr.saved_bytes = f.get("saved_bytes").and_then(|x| x.as_i64()).unwrap_or(0);
-            fr.cycle_risk = f.get("cycle_risk").and_then(|x| x.as_bool()).unwrap_or(false);
-            fr.status = match f.get("status").and_then(|x| x.as_str()).unwrap_or("") {
-                "success" => FileStatus::Success,
-                "skipped_larger" => FileStatus::SkippedLarger,
-                "failed" => FileStatus::Failed,
-                _ => FileStatus::SkippedOther,
+            let fr = crate::types::FileResult {
+                name: get_str(f, "name"),
+                final_name: get_str(f, "final_name"),
+                original_size: get_u64(f, "original_size"),
+                compressed_size: get_u64(f, "compressed_size"),
+                saved_bytes: get_i64(f, "saved_bytes"),
+                cycle_risk: get_bool(f, "cycle_risk"),
+                status: match get_str(f, "status").as_str() {
+                    "success" => FileStatus::Success,
+                    "skipped_larger" => FileStatus::SkippedLarger,
+                    "failed" => FileStatus::Failed,
+                    _ => FileStatus::SkippedOther,
+                },
+                ..Default::default()
             };
             s.files.push(fr);
         }

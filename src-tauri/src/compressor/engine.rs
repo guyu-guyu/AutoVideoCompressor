@@ -1,4 +1,5 @@
 use crate::types::FfmpegStatus;
+use crate::util::fs_util::safe_delete_retry;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -93,12 +94,14 @@ pub fn compress(params: &CompressParams, cancel: &AtomicBool) -> CompressResult 
     if code == -3 {
         result.cancelled = true;
         result.error_message = "压缩已取消".into();
-        // Delete partial output file directly at engine level
-        let _ = std::fs::remove_file(&params.output_path);
+        // Delete partial output. On Windows, right after ffmpeg is killed the
+        // file handle may still be held by the OS briefly (or by Defender/indexer
+        // scanning the file it just released) — so retry a few times.
+        safe_delete_retry(Path::new(&params.output_path), 5);
     } else if timed_out {
         result.error_message = format!("压缩超时 ({}s)", params.timeout_seconds);
-        // Clean up partial output on timeout
-        let _ = std::fs::remove_file(&params.output_path);
+        // Clean up partial output on timeout (same retry rationale as above).
+        safe_delete_retry(Path::new(&params.output_path), 5);
     } else if code == -1 {
         result.error_message = "无法启动 ffmpeg 进程".into();
     } else {

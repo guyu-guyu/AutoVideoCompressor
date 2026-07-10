@@ -25,6 +25,7 @@ pub struct FileResult {
     pub ffmpeg_exit_code: i32,
     pub ffmpeg_duration_ms: i32,
     pub cycle_risk: bool,
+    pub error_message: String,
 }
 
 impl Default for FileResult {
@@ -35,6 +36,7 @@ impl Default for FileResult {
             status: FileStatus::SkippedOther,
             original_size: 0, compressed_size: 0, saved_bytes: 0,
             ffmpeg_exit_code: -1, ffmpeg_duration_ms: 0, cycle_risk: false,
+            error_message: String::new(),
         }
     }
 }

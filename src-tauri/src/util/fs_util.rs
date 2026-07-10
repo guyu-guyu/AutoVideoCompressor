@@ -42,6 +42,32 @@ pub fn safe_delete(path: &Path) -> bool {
     std::fs::remove_file(path).is_ok()
 }
 
+/// Delete a file with retries. Windows may briefly hold a lock on a file that
+/// was just released by a killed child process (Defender/indexer scanning it),
+/// so a single remove_file can fail even when the child is gone. Retries up to
+/// `attempts` times with a short pause between tries. Returns true iff the file
+/// is gone after the attempts (either successfully removed, or already absent).
+pub fn safe_delete_retry(path: &Path, attempts: u32) -> bool {
+    for i in 0..attempts.max(1) {
+        if !path.exists() {
+            return true;
+        }
+        match std::fs::remove_file(path) {
+            Ok(_) => return true,
+            Err(e) => {
+                eprintln!(
+                    "[autocompress] remove_file failed (attempt {}/{}) for {}: {}",
+                    i + 1, attempts, path.display(), e
+                );
+                if i + 1 < attempts {
+                    std::thread::sleep(std::time::Duration::from_millis(120));
+                }
+            }
+        }
+    }
+    !path.exists()
+}
+
 /// Rename a file, returning whether it succeeded. Mirrors safeRename.
 pub fn safe_rename(from: &Path, to: &Path) -> bool {
     std::fs::rename(from, to).is_ok()

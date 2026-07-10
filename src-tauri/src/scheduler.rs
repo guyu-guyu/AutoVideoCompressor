@@ -1,4 +1,4 @@
-use chrono::{DateTime, Duration, Local, TimeZone, Timelike};
+use chrono::{DateTime, Duration, Local, TimeZone};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
@@ -23,7 +23,7 @@ pub fn compute_next_run(now: DateTime<Local>, hour: u32, minute: u32) -> DateTim
     let today = now.date_naive().and_hms_opt(hour, minute, 0).unwrap();
     let mut target = Local.from_local_datetime(&today).single().unwrap_or(now);
     if target <= now {
-        target = target + Duration::hours(24);
+        target += Duration::hours(24);
     }
     target
 }
@@ -68,7 +68,7 @@ impl Scheduler {
         let mut guard = self.schedules.lock().unwrap();
         for s in guard.iter_mut() {
             if s.dir_path == dir_path {
-                s.next_run = s.next_run + Duration::hours(24);
+                s.next_run += Duration::hours(24);
                 break;
             }
         }
@@ -119,7 +119,7 @@ impl Default for Scheduler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{Local, Duration};
+    use chrono::{Local, Duration, Timelike};
 
     #[test]
     fn compute_next_run_future_today() {
