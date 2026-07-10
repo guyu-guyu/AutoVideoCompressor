@@ -26,5 +26,6 @@ declare module 'vue' {
     TabConfig: typeof import('./components/tabs/TabConfig.vue')['default']
     TabHistory: typeof import('./components/tabs/TabHistory.vue')['default']
     TabPreview: typeof import('./components/tabs/TabPreview.vue')['default']
+    TitleBar: typeof import('./components/TitleBar.vue')['default']
   }
 }
