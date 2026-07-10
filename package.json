@@ -11,6 +11,7 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@tauri-apps/plugin-dialog": "^2.7.1",
     "naive-ui": "^2.44.1",
     "pinia": "^2.1",
     "vue": "^3.4"
