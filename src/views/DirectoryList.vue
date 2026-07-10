@@ -90,7 +90,11 @@ async function confirmAdd() {
 
 <style scoped>
 .page {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
     padding: 12px;
+    box-sizing: border-box;
 }
 .listhead {
     display: flex;

@@ -84,6 +84,8 @@ async function forceQuit() {
 .content {
     flex: 1 1 auto;
     min-height: 0;
-    overflow: auto;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 </style>
