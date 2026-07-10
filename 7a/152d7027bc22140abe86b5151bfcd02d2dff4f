@@ -1,0 +1,83 @@
+src/components/ConfigForm.test.ts
+  s_3aa10755388e69::t_a50e9b3ee87269 1-9,11-17,19-54,112
+  s_3aa10755388e69::t_b700b939c3b81d 10,18
+  s_3aa10755388e69::t_eb5bcd765b5604 77-111
+  s_3aa10755388e69::t_aa8b9799cf3027 55-76
+src/components/DirCard.test.ts
+  s_3aa10755388e69::t_883343c71d54ea 4
+  s_3aa10755388e69::t_28cbdd4feab597 8-10
+  s_3aa10755388e69::t_e62e2595ccfcb7 36-43
+src/views/DirectoryList.vue
+  s_3aa10755388e69::t_c8e65cc85f04c2 15
+  s_3aa10755388e69::t_ca3b48346f26f0 14,24,28-29,41
+src/components/tabs/TabHistory.vue
+  s_3aa10755388e69::t_f2de7779ba356a 6,17-38,44-46
+src/AppShell.vue
+  s_3aa10755388e69::t_100ee6bac6a632 1-55
+src/vite-env.d.ts
+  s_3aa10755388e69::t_67c993864ace2b 8-15
+src/components/FfmpegStatusBar.vue
+  s_3aa10755388e69::t_dc9ec2528abb8a 4,10-22,26
+src/components/tabs/TabConfig.vue
+  s_3aa10755388e69::t_3aea75d35d4502 6,62-63,71,73-74,80-85,91-92
+  s_3aa10755388e69::t_f98e548c2d7a7c 21,25-30
+  s_3aa10755388e69::t_6451f0d75eae11 2
+vite.config.ts
+  s_3aa10755388e69::t_ce491453e71c84 3-5,10-24
+src/components/DirCard.vue
+  s_3aa10755388e69::t_1fd5f5801438a7 6,12-14,54,65-116,120-121,123-129
+  s_3aa10755388e69::t_faa40568d790ea 25-28,30
+  s_3aa10755388e69::t_16a77414cc5054 55-56,60
+  s_3aa10755388e69::t_6a37fcff2716e0 29,31-35,39,41,45,47
+src/components/GlobalSettings.vue
+  s_3aa10755388e69::t_6b32155a197cb9 6-8,30-72,76-77
+src/theme.ts
+  s_3aa10755388e69::t_476251fdd37a94 1-19
+src/App.vue
+  s_3aa10755388e69::t_19520b9420fd2f 2-6,8,15
+  s_3aa10755388e69::t_27ba7b94613291 7,12-14,16-18
+src/auto-imports.d.ts
+  s_3aa10755388e69::t_66b839e21513db 1-80
+src/components.d.ts
+  s_3aa10755388e69::t_66b839e21513db 1-30
+src/api/tauri.ts
+  s_3aa10755388e69::t_d2eb3c490931b3 8-18,20-24,26-27,29,31-39
+src/components/ConfigForm.vue
+  s_3aa10755388e69::t_a9db4c5cb72afd 29
+  s_3aa10755388e69::t_1f34e2af191633 2,4-7,12-19,23-28,30-39,42,44,47-52,55-59,63-64,67-69,73,80-87,89-150,161,164,177
+  s_3aa10755388e69::t_a59aee7344e5c9 151-153,158-160
+  s_3aa10755388e69::t_d364885009153a 162-163
+  s_3aa10755388e69::t_6a1de5b106ad2e 165-167,174-176
+  s_3aa10755388e69::t_5e1001f0804374 154-157,168-173,182-184
+src/views/DirectoryDetail.vue
+  s_3aa10755388e69::t_fbbc2eeb1816c5 33-39,41-80,87-93
+  s_3aa10755388e69::t_d4a04e6b35d8d7 19,21,24,26
+src/components/tabs/TabPreview.vue
+  s_3aa10755388e69::t_c700af891eb30b 43-44
+  s_3aa10755388e69::t_ec043b552d4b5e 35
+  s_3aa10755388e69::t_4654d60479763a 2,6,17-34,36-42,45-46,50-69,74-78
+src/stores/app.ts
+  s_3aa10755388e69::t_9b2da3e4cd329e 13-32,35,38-58
+package-lock.json
+  s_3aa10755388e69::t_af14a27c13833b 11,22-23,89-106,222-226,649-679,686-701,1312-1326,1706-1711,1792-1806,1883-1898,1940-1957,2171-2183,2190-2195,2220-2244,2452-2460,2679-2690,2830-2861,2932-2945,3068-3079,3194-3210,3225-3237,3317-3329,3553-3568,3618-3623,3655-3746,3757-4002,4014-4025,4175-4186,4265-4282,4306-4312
+package.json
+  s_3aa10755388e69::t_41855f6bc80937 14-16,22-23,25-26,29
+index.html
+  s_3aa10755388e69::t_2cdb4b3f2e7600 8-10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "7a152d7027bc22140abe86b5151bfcd02d2dff4f",
+  "prompts": {},
+  "sessions": {
+    "s_3aa10755388e69": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b1354955-394c-40a0-80d4-5ede49020722",
+        "model": "claude-opus-4.8"
+      },
+      "human_author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
