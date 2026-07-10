@@ -16,59 +16,79 @@ const card = computed(() => store.cards.find(c => c.path === props.dirPath));
 const isRunning = computed(() => store.runtime[props.dirPath]?.stage === "compressing");
 
 async function compressNow() {
+  console.log("[DirectoryDetail] 立即压缩此目录:", props.dirPath);
   try { await api.compressDirectoryNow(props.dirPath); }
-  catch (e) { alert(String(e)); }
+  catch (e) { console.error("[DirectoryDetail] 压缩失败:", props.dirPath, e); window.$message?.error(String(e)); }
 }
 async function stopIt() {
+  console.log("[DirectoryDetail] 停止压缩:", props.dirPath);
   try { await api.stopCompression(); }
-  catch (e) { alert(String(e)); }
+  catch (e) { console.error("[DirectoryDetail] 停止失败:", props.dirPath, e); window.$message?.error(String(e)); }
 }
 </script>
 
 <template>
   <div class="page">
     <div class="backbar">
-      <button @click="emit('back')">← 返回</button>
-      <span class="path">📁 {{ dirPath }}</span>
-      <span v-if="isRunning" class="running-indicator">🔄 压缩中</span>
-      <button v-if="isRunning" class="stop-btn" @click="stopIt">⏹ 停止压缩</button>
-      <button v-else @click="compressNow" :disabled="!store.ffmpeg.ready">立即压缩此目录</button>
+      <n-button quaternary size="small" @click="emit('back')">← 返回</n-button>
+      <n-ellipsis class="path" :tooltip="false">
+        <span>📁 {{ dirPath }}</span>
+      </n-ellipsis>
+      <n-tag v-if="isRunning" type="info" :bordered="false" round>🔄 压缩中</n-tag>
+      <n-button v-if="isRunning" type="error" size="small" @click="stopIt">⏹ 停止压缩</n-button>
+      <n-button v-else type="primary" size="small" :disabled="!store.ffmpeg.ready" @click="compressNow">立即压缩此目录</n-button>
     </div>
-    <div v-if="isRunning && store.progress[dirPath]" class="progress-bar">
-      正在处理: {{ store.progress[dirPath].currentFile }}
-      ({{ store.progress[dirPath].completed }}/{{ store.progress[dirPath].total }})
-    </div>
-    <div v-if="card" class="summary">
-      <div>匹配 {{ card.fileCount }} 文件 · {{ formatFileSize(card.totalSize) }} · 参数 {{ card.paramsName || "默认" }} · 下次 {{ card.nextRunTime }}
-        <span v-if="card.cycleRiskCount">· ⚠ {{ card.cycleRiskCount }} 循环风险</span>
-      </div>
-      <div v-if="card.nextRunCount > 0" class="next-run-summary">
-        下次压缩: <strong>{{ card.nextRunCount }}</strong> 文件 · {{ formatFileSize(card.nextRunSize) }}
-        <template v-if="card.nextRunCount < card.fileCount">({{ card.fileCount - card.nextRunCount }} 文件超限跳过)</template>
-      </div>
-      <div>上次: {{ card.lastRunTime || "—" }} {{ card.lastRunResult }}</div>
-    </div>
-    <div class="tabs">
-      <button :class="{ active: tab==='preview' }" @click="tab='preview'">压缩文件预览</button>
-      <button :class="{ active: tab==='config' }" @click="tab='config'">配置</button>
-      <button :class="{ active: tab==='history' }" @click="tab='history'">压缩执行历史</button>
-    </div>
-    <TabPreview v-if="tab==='preview'" :dir-path="dirPath" />
-    <TabConfig v-else-if="tab==='config'" :dir-path="dirPath" />
-    <TabHistory v-else :dir-path="dirPath" />
+
+    <n-card v-if="isRunning && store.progress[dirPath]" size="small" class="progress-card">
+      <n-space vertical :size="4">
+        <span>正在处理: {{ store.progress[dirPath].currentFile }}</span>
+        <n-progress
+          type="line"
+          :percentage="store.progress[dirPath].total > 0
+            ? Math.round((store.progress[dirPath].completed / store.progress[dirPath].total) * 100)
+            : 0"
+          :height="12"
+          :show-indicator="false"
+        />
+        <span class="progress-text">({{ store.progress[dirPath].completed }}/{{ store.progress[dirPath].total }})</span>
+      </n-space>
+    </n-card>
+
+    <n-card v-if="card" size="small" class="summary">
+      <n-space vertical :size="4">
+        <div>匹配 {{ card.fileCount }} 文件 · {{ formatFileSize(card.totalSize) }} · 参数 {{ card.paramsName || "默认" }} · 下次 {{ card.nextRunTime }}
+          <span v-if="card.cycleRiskCount" class="risk">· ⚠ {{ card.cycleRiskCount }} 循环风险</span>
+        </div>
+        <div v-if="card.nextRunCount > 0" class="next-run">
+          下次压缩: <strong>{{ card.nextRunCount }}</strong> 文件 · {{ formatFileSize(card.nextRunSize) }}
+          <template v-if="card.nextRunCount < card.fileCount">({{ card.fileCount - card.nextRunCount }} 文件超限跳过)</template>
+        </div>
+        <div>上次: {{ card.lastRunTime || "—" }} {{ card.lastRunResult }}</div>
+      </n-space>
+    </n-card>
+
+    <n-tabs v-model:value="tab" type="line" class="tabs">
+      <n-tab-pane name="preview" tab="压缩文件预览">
+        <TabPreview :dir-path="dirPath" />
+      </n-tab-pane>
+      <n-tab-pane name="config" tab="配置">
+        <TabConfig :dir-path="dirPath" />
+      </n-tab-pane>
+      <n-tab-pane name="history" tab="压缩执行历史">
+        <TabHistory :dir-path="dirPath" />
+      </n-tab-pane>
+    </n-tabs>
   </div>
 </template>
 
 <style scoped>
 .page { padding:12px; }
 .backbar { display:flex; gap:10px; align-items:center; margin-bottom:10px; }
-.path { flex:1; font-weight:600; }
-.running-indicator { color:#06c; font-weight:600; }
-.summary { background:#f6f6f6; border-radius:6px; padding:8px; margin-bottom:10px; font-size:0.9em; }
-.tabs { display:flex; gap:4px; margin-bottom:10px; }
-.tabs button.active { background:#06c; color:#fff; }
-.stop-btn { background:#e33; color:#fff; border:none; border-radius:4px; padding:4px 12px; cursor:pointer; }
-.stop-btn:hover { background:#c11; }
-.progress-bar { background:#e8f4ff; border-radius:6px; padding:6px 12px; margin-bottom:10px; font-size:0.9em; color:#06c; }
-.next-run-summary { color:#06c; font-weight:600; margin-top:2px; }
+.path { flex:1; font-weight:600; min-width:0; }
+.progress-card { margin-bottom:10px; }
+.summary { margin-bottom:10px; font-size:0.9em; }
+.tabs { margin-top:4px; }
+.risk { color:#d97706; }
+.next-run { color:#0066cc; font-weight:600; }
+.progress-text { font-size:0.85em; color:#0066cc; }
 </style>

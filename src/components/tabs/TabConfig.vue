@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from "vue";
+import { ref, watch, onMounted, onUnmounted, computed } from "vue";
 import { api } from "../../api/tauri";
 import ConfigForm from "../ConfigForm.vue";
 import type { DirConfigView, Template } from "../../types";
+import { NButton, NSpace, NAlert, NCard } from "naive-ui";
 
 const props = defineProps<{ dirPath: string }>();
 const view = ref<DirConfigView | null>(null);
@@ -17,10 +18,16 @@ async function load() {
   const gc = await api.getGlobalConfig();
   templates.value = gc.templates;
   lastMtime.value = await api.getConfigMtime(props.dirPath);
+  console.log("[TabConfig] load 完成:", props.dirPath, "exists=", view.value?.exists);
 }
 async function poll() {
   const m = await api.getConfigMtime(props.dirPath);
-  if (m !== 0 && m !== lastMtime.value) { lastMtime.value = m; await load(); }
+  // 仅当磁盘配置文件 mtime 真实变化时才重载（用户编辑期间不会触发，因未保存）
+  if (m !== 0 && m !== lastMtime.value) {
+    console.log("[TabConfig] 检测到配置文件 mtime 变化，重新加载:", lastMtime.value, "->", m);
+    lastMtime.value = m;
+    await load();
+  }
 }
 onMounted(async () => { await load(); timer = window.setInterval(poll, 1500); });
 onUnmounted(() => { if (timer) clearInterval(timer); });
@@ -52,6 +59,8 @@ async function save() {
 }
 async function reset() { await load(); }
 async function openExternal() { await api.openConfigInEditor(props.dirPath); }
+
+const hasError = computed(() => error.value.length > 0);
 </script>
 
 <template>
@@ -59,32 +68,28 @@ async function openExternal() { await api.openConfigInEditor(props.dirPath); }
     <!-- No config exists: show only create button -->
     <div v-if="!view.exists" class="no-config">
       <p>此目录尚未创建配置文件</p>
-      <button class="create-btn" @click="createDefault" :disabled="creating">
+      <n-button type="primary" :loading="creating" @click="createDefault">
         {{ creating ? "创建中…" : "＋ 创建默认配置文件" }}
-      </button>
-      <p v-if="error" class="err">{{ error }}</p>
+      </n-button>
+      <n-alert v-if="hasError" type="error" class="err">{{ error }}</n-alert>
     </div>
 
     <!-- Config exists: show full form -->
     <template v-else>
       <ConfigForm v-model="view" :templates="templates" />
-      <div class="bar">
-        <button @click="save">{{ view.exists ? "💾 保存" : "创建配置文件" }}</button>
-        <button @click="reset">↻ 重置</button>
-        <button @click="openExternal">📂 打开外部编辑器</button>
-      </div>
-      <p v-if="error" class="err">{{ error }}</p>
+      <n-space class="bar">
+        <n-button type="primary" @click="save">{{ view.exists ? "💾 保存" : "创建配置文件" }}</n-button>
+        <n-button @click="reset">↻ 重置</n-button>
+        <n-button @click="openExternal">📂 打开外部编辑器</n-button>
+      </n-space>
+      <n-alert v-if="hasError" type="error" class="err">{{ error }}</n-alert>
     </template>
   </div>
 </template>
 
 <style scoped>
-.bar { display:flex; gap:8px; margin-top:10px; }
-.err { color:#a11; margin-top:8px; }
+.bar { margin-top:10px; }
+.err { margin-top:8px; }
 .no-config { text-align:center; padding:40px 20px; }
 .no-config p { color:#888; margin-bottom:16px; }
-.create-btn { padding:10px 24px; font-size:1.1em; background:#06c; color:#fff;
-  border:none; border-radius:6px; cursor:pointer; }
-.create-btn:hover { background:#058; }
-.create-btn:disabled { opacity:0.6; cursor:not-allowed; }
 </style>

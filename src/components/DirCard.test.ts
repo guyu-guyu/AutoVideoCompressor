@@ -1,10 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
+import { NSwitch } from "naive-ui";
 import DirCard from "./DirCard.vue";
 import type { DirCardInfo } from "../types";
 
-vi.mock("../api/tauri", () => ({ api: {} }));
+// 回归：n-switch 的 update:value 传入 boolean 新值，toggle 必须用它调用后端。
+const setDirectoryEnabled = vi.hoisted(() => vi.fn());
+vi.mock("../api/tauri", () => ({ api: { setDirectoryEnabled } }));
 
 function card(overrides: Partial<DirCardInfo> = {}): DirCardInfo {
   return {
@@ -29,5 +32,13 @@ describe("DirCard", () => {
   it("shows cycle risk warning", () => {
     const w = mount(DirCard, { props: { card: card({ cycleRiskCount: 2 }) } });
     expect(w.text()).toContain("2 个循环风险");
+  });
+  it("toggle 用 n-switch 传入的新值调用 setDirectoryEnabled(回归: 不得把回调当 Event)", async () => {
+    const w = mount(DirCard, { props: { card: card({ enabled: true }) } });
+    // n-switch 点击切换时，update:value 回调收到的是新 boolean，而非 Event
+    w.findComponent(NSwitch).vm.$emit("update:value", false);
+    await vi.waitFor(() => {
+      expect(setDirectoryEnabled).toHaveBeenCalledWith("D:/x", false);
+    });
   });
 });

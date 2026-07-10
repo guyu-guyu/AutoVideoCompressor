@@ -3,10 +3,10 @@ import { ref, watch, onMounted } from "vue";
 import { api } from "../../api/tauri";
 import { formatFileSize } from "../../util/format";
 import type { RunSummary } from "../../types";
+import { NCollapse, NCollapseItem, NText, NEmpty, NSpace } from "naive-ui";
 
 const props = defineProps<{ dirPath: string }>();
 const runs = ref<RunSummary[]>([]);
-const expanded = ref<Record<number, boolean>>({});
 async function load() { runs.value = await api.listRunHistory(props.dirPath); }
 onMounted(load);
 watch(() => props.dirPath, load);
@@ -14,29 +14,34 @@ watch(() => props.dirPath, load);
 
 <template>
   <div>
-    <p class="count">共 {{ runs.length }} 次执行</p>
-    <div v-for="(r, i) in runs" :key="i" class="run">
-      <div class="head" @click="expanded[i] = !expanded[i]">
-        {{ expanded[i] ? "▼" : "▶" }} {{ r.startTime }}
-        — 成功{{ r.successCount }} · 失败{{ r.failedCount }} · 节省{{ formatFileSize(r.totalSavedBytes) }}
-      </div>
-      <div v-if="expanded[i]" class="detail">
-        <div>跳过(更大): {{ r.skippedLargerCount }} · 跳过(其他): {{ r.skippedOtherCount }} · 循环风险: {{ r.cycleRiskCount }}</div>
-        <ul>
-          <li v-for="(f, j) in r.files" :key="j">
-            {{ f.name }} — {{ f.status }} ({{ formatFileSize(f.originalSize) }} → {{ formatFileSize(f.compressedSize) }})
-          </li>
-        </ul>
-      </div>
-    </div>
-    <p v-if="runs.length === 0" class="empty">暂无执行记录</p>
+    <n-text depth="2" class="count">共 {{ runs.length }} 次执行</n-text>
+    <n-collapse v-if="runs.length > 0" accordion class="runs">
+      <n-collapse-item v-for="(r, i) in runs" :key="i" :name="i">
+        <template #header>
+          <n-space :size="6" align="center">
+            <n-text>{{ r.startTime }}</n-text>
+            <n-text depth="3">— 成功{{ r.successCount }} · 失败{{ r.failedCount }} · 节省{{ formatFileSize(r.totalSavedBytes) }}</n-text>
+          </n-space>
+        </template>
+        <n-space vertical :size="4">
+          <n-text depth="3">
+            跳过(更大): {{ r.skippedLargerCount }} · 跳过(其他): {{ r.skippedOtherCount }} · 循环风险: {{ r.cycleRiskCount }}
+          </n-text>
+          <ul class="file-list">
+            <li v-for="(f, j) in r.files" :key="j">
+              {{ f.name }} — {{ f.status }} ({{ formatFileSize(f.originalSize) }} → {{ formatFileSize(f.compressedSize) }})
+            </li>
+          </ul>
+        </n-space>
+      </n-collapse-item>
+    </n-collapse>
+    <n-empty v-else description="暂无执行记录" class="empty" />
   </div>
 </template>
 
 <style scoped>
 .count { color:#555; }
-.run { border:1px solid #eee; border-radius:6px; margin-bottom:6px; }
-.head { padding:8px; cursor:pointer; background:#fafafa; }
-.detail { padding:8px; font-size:0.9em; }
-.empty { color:#888; }
+.runs { margin-top:8px; }
+.empty { padding:12px; }
+.file-list { margin:0; padding-left:20px; font-size:0.9em; }
 </style>

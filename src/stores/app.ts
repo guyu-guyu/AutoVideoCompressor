@@ -10,19 +10,52 @@ export const useAppStore = defineStore("app", () => {
   const progress = ref<Record<string, CompressProgress>>({});
   const compressingWhileClose = ref(false);
 
-  async function refreshCards() { cards.value = await api.listDirectories(); }
-  async function refreshFfmpeg() { ffmpeg.value = await api.getFfmpegStatus(); }
+  async function refreshCards() {
+    try {
+      const list = await api.listDirectories();
+      cards.value = list;
+      console.log("[store] refreshCards 完成: 共", list.length, "个目录");
+    } catch (e) {
+      console.error("[store] refreshCards 失败:", e);
+      throw e;
+    }
+  }
+  async function refreshFfmpeg() {
+    try {
+      const s = await api.getFfmpegStatus();
+      ffmpeg.value = s;
+      console.log("[store] refreshFfmpeg 完成: ready=", s.ready, "version=", s.version);
+    } catch (e) {
+      console.error("[store] refreshFfmpeg 失败:", e);
+      throw e;
+    }
+  }
 
   async function init() {
+    console.log("[store] init 开始");
     await refreshCards();
     await refreshFfmpeg();
-    await events.onFfmpegStatus((s) => { ffmpeg.value = s; });
-    await events.onDirState((s) => {
-      runtime.value[s.dirPath] = s;
-      refreshCards(); // last/next-run and stage changed
-    });
-    await events.onProgress((p) => { progress.value[p.dirPath] = p; });
-    await events.onCloseWhileCompressing(() => { compressingWhileClose.value = true; });
+    // 事件监听注册各自独立 try/catch：单个失败不应阻断其余监听
+    try {
+      await events.onFfmpegStatus((s) => { ffmpeg.value = s; });
+      console.log("[store] 已注册 ffmpeg-status-changed 监听");
+    } catch (e) { console.error("[store] 注册 onFfmpegStatus 失败:", e); }
+    try {
+      await events.onDirState((s) => {
+        runtime.value[s.dirPath] = s;
+        refreshCards(); // last/next-run and stage changed
+      });
+      console.log("[store] 已注册 dir-state-changed 监听");
+    } catch (e) { console.error("[store] 注册 onDirState 失败:", e); }
+    try {
+      await events.onProgress((p) => { progress.value[p.dirPath] = p; });
+      console.log("[store] 已注册 compress-progress 监听");
+    } catch (e) { console.error("[store] 注册 onProgress 失败:", e); }
+    try {
+      await events.onCloseWhileCompressing(() => { compressingWhileClose.value = true; });
+      console.log("[store] 已注册 close-requested-while-compressing 监听");
+    } catch (e) { console.error("[store] 注册 onCloseWhileCompressing 失败:", e); }
+    console.log("[store] init 完成");
   }
 
   return { cards, ffmpeg, runtime, progress, compressingWhileClose,

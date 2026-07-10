@@ -5,27 +5,38 @@ import type {
   FfmpegStatus, GlobalConfig, DirRuntimeState, CompressProgress,
 } from "../types";
 
+// 所有 Tauri 后端调用的统一出口：失败时记录命令名与原始错误，便于定位是哪条 invoke 出问题。
+// 成功时不打日志（避免 getConfigMtime 这类 1.5s 轮询刷屏）。
+async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  try {
+    return await invoke<T>(cmd, args);
+  } catch (e) {
+    console.error(`[tauri] invoke '${cmd}' 失败:`, e);
+    throw e;
+  }
+}
+
 export const api = {
-  listDirectories: () => invoke<DirCardInfo[]>("list_directories"),
-  getGlobalConfig: () => invoke<GlobalConfig>("get_global_config"),
-  saveGlobalConfig: (config: GlobalConfig) => invoke<void>("save_global_config", { config }),
-  addDirectory: (path: string) => invoke<void>("add_directory", { path }),
-  removeDirectory: (path: string, force: boolean) => invoke<void>("remove_directory", { path, force }),
+  listDirectories: () => call<DirCardInfo[]>("list_directories"),
+  getGlobalConfig: () => call<GlobalConfig>("get_global_config"),
+  saveGlobalConfig: (config: GlobalConfig) => call<void>("save_global_config", { config }),
+  addDirectory: (path: string) => call<void>("add_directory", { path }),
+  removeDirectory: (path: string, force: boolean) => call<void>("remove_directory", { path, force }),
   setDirectoryEnabled: (path: string, enabled: boolean) =>
-    invoke<void>("set_directory_enabled", { path, enabled }),
-  getDirectoryConfig: (path: string) => invoke<DirConfigView>("get_directory_config", { path }),
+    call<void>("set_directory_enabled", { path, enabled }),
+  getDirectoryConfig: (path: string) => call<DirConfigView>("get_directory_config", { path }),
   saveDirectoryConfig: (path: string, config: DirConfigView) =>
-    invoke<void>("save_directory_config", { path, config }),
+    call<void>("save_directory_config", { path, config }),
   createDirectoryConfig: (path: string, config: DirConfigView) =>
-    invoke<void>("create_directory_config", { path, config }),
-  getConfigMtime: (path: string) => invoke<number>("get_config_mtime", { path }),
-  openConfigInEditor: (path: string) => invoke<void>("open_config_in_editor", { path }),
-  scanDirectory: (path: string) => invoke<FilePreview[]>("scan_directory", { path }),
-  listRunHistory: (path: string) => invoke<RunSummary[]>("list_run_history", { path }),
-  compressDirectoryNow: (path: string) => invoke<void>("compress_directory_now", { path }),
-  stopCompression: () => invoke<void>("stop_compression"),
-  recheckFfmpeg: () => invoke<void>("recheck_ffmpeg"),
-  getFfmpegStatus: () => invoke<FfmpegStatus>("get_ffmpeg_status"),
+    call<void>("create_directory_config", { path, config }),
+  getConfigMtime: (path: string) => call<number>("get_config_mtime", { path }),
+  openConfigInEditor: (path: string) => call<void>("open_config_in_editor", { path }),
+  scanDirectory: (path: string) => call<FilePreview[]>("scan_directory", { path }),
+  listRunHistory: (path: string) => call<RunSummary[]>("list_run_history", { path }),
+  compressDirectoryNow: (path: string) => call<void>("compress_directory_now", { path }),
+  stopCompression: () => call<void>("stop_compression"),
+  recheckFfmpeg: () => call<void>("recheck_ffmpeg"),
+  getFfmpegStatus: () => call<FfmpegStatus>("get_ffmpeg_status"),
 };
 
 export const events = {

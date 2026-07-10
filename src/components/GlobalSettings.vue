@@ -3,6 +3,9 @@ import { ref, onMounted } from "vue";
 import { api } from "../api/tauri";
 import { useAppStore } from "../stores/app";
 import type { GlobalConfig } from "../types";
+import {
+  NModal, NCard, NForm, NFormItem, NInput, NInputNumber, NCheckbox, NButton, NSpace,
+} from "naive-ui";
 
 const emit = defineEmits<{ close: [] }>();
 const store = useAppStore();
@@ -24,36 +27,52 @@ async function save() {
 </script>
 
 <template>
-  <div class="overlay" @click.self="emit('close')">
-    <div class="dialog" v-if="cfg">
-      <h3>全局设置</h3>
-      <label>ffmpeg 路径 <input v-model="cfg.ffmpegPath" style="width:100%" /></label>
-      <label>ffmpeg 超时(秒) <input type="number" v-model.number="cfg.ffmpegTimeoutSeconds" /></label>
-      <label>日志保留天数 <input type="number" v-model.number="cfg.logRetentionDays" /></label>
-      <label><input type="checkbox" v-model="cfg.startWithWindows" /> 开机自启动</label>
-      <label><input type="checkbox" v-model="cfg.minimizeToTray" /> 最小化到托盘</label>
+  <n-modal
+    :show="true"
+    preset="card"
+    title="全局设置"
+    style="width:520px; max-width:90vw;"
+    :auto-focus="false"
+    @close="emit('close')"
+    @update:show="(v: boolean) => { if (!v) emit('close'); }"
+  >
+    <n-form v-if="cfg" label-placement="top">
+      <n-form-item label="ffmpeg 路径">
+        <n-input v-model:value="cfg.ffmpegPath" placeholder="ffmpeg 路径" />
+      </n-form-item>
+      <n-form-item label="ffmpeg 超时(秒)">
+        <n-input-number v-model:value="cfg.ffmpegTimeoutSeconds" :min="1" style="width:100%" />
+      </n-form-item>
+      <n-form-item label="日志保留天数">
+        <n-input-number v-model:value="cfg.logRetentionDays" :min="0" style="width:100%" />
+      </n-form-item>
+      <n-space vertical :size="4">
+        <n-checkbox v-model:checked="cfg.startWithWindows">开机自启动</n-checkbox>
+        <n-checkbox v-model:checked="cfg.minimizeToTray">最小化到托盘</n-checkbox>
+      </n-space>
 
-      <h4>模板</h4>
-      <div v-for="(t, i) in cfg.templates" :key="i" class="tmpl">
-        <input v-model="t.name" placeholder="名称" />
-        <input v-model="t.params" placeholder="参数" style="flex:1" />
-        <button @click="removeTemplate(i)">×</button>
-      </div>
-      <button @click="addTemplate">＋ 添加模板</button>
+      <n-form-item label="模板" class="tmpl-form-item">
+        <n-space vertical :size="6" style="width:100%">
+          <div v-for="(t, i) in cfg.templates" :key="i" class="tmpl">
+            <n-input v-model:value="t.name" placeholder="名称" style="width:120px" />
+            <n-input v-model:value="t.params" placeholder="参数" style="flex:1" />
+            <n-button text type="error" @click="removeTemplate(i)">×</n-button>
+          </div>
+          <n-button dashed size="small" @click="addTemplate">＋ 添加模板</n-button>
+        </n-space>
+      </n-form-item>
+    </n-form>
 
-      <div class="bar">
-        <button @click="save">保存</button>
-        <button @click="emit('close')">取消</button>
-      </div>
-    </div>
-  </div>
+    <template #footer>
+      <n-space justify="end">
+        <n-button type="primary" @click="save">保存</n-button>
+        <n-button @click="emit('close')">取消</n-button>
+      </n-space>
+    </template>
+  </n-modal>
 </template>
 
 <style scoped>
-.overlay { position:fixed; inset:0; background:rgba(0,0,0,.4); display:flex;
-  justify-content:center; align-items:center; }
-.dialog { background:#fff; border-radius:8px; padding:16px; width:520px; max-height:80vh; overflow:auto; }
-.dialog label { display:block; margin:6px 0; }
-.tmpl { display:flex; gap:6px; margin-bottom:4px; }
-.bar { display:flex; gap:8px; margin-top:12px; }
+.tmpl { display:flex; gap:6px; align-items:center; }
+.tmpl-form-item :deep(.n-form-item-blank) { width:100%; }
 </style>
