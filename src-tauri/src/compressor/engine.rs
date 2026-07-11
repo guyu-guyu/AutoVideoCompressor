@@ -33,43 +33,70 @@ fn base_command(program: &str) -> Command {
     let mut cmd = Command::new(program);
     #[cfg(windows)]
     cmd.creation_flags(CREATE_NO_WINDOW);
+    // Critical: null stdin prevents ffmpeg from inheriting the GUI parent's
+    // invalid stdin handle, which causes hangs on some Windows builds.
+    cmd.stdin(Stdio::null());
     cmd
 }
 
-/// Run a process with a timeout. Returns (exit_code, timed_out, captured_output).
+/// Run a process with a timeout, DISCARDING all output.
+/// Uses Stdio::null() to avoid pipe-deadlock (ffmpeg writes to stderr faster
+/// than we read, filling the OS pipe buffer and freezing the child).
 /// exit_code is -1 on spawn failure, -2 on timeout, -3 on cancellation.
 pub fn run_process(program: &str, args: &[&str], timeout_secs: i64, cancel: &AtomicBool) -> (i32, bool, String) {
     let mut cmd = base_command(program);
-    cmd.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
+    cmd.args(args)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    eprintln!(
+        "[autocompress] run_process: spawning {} {:?} (timeout={}s)",
+        program, args, timeout_secs
+    );
     let mut child = match cmd.spawn() {
-        Ok(c) => c,
-        Err(_) => return (-1, false, String::new()),
+        Ok(c) => {
+            eprintln!("[autocompress] run_process: spawn OK, pid={:?}", c.id());
+            c
+        }
+        Err(e) => {
+            eprintln!("[autocompress] run_process: SPAWN FAILED: {}", e);
+            return (-1, false, String::new());
+        }
     };
     let start = Instant::now();
     loop {
-        // Check cancellation before each poll
         if cancel.load(Ordering::SeqCst) {
+            eprintln!("[autocompress] run_process: CANCELLED, killing child");
             let _ = child.kill();
-            let _ = child.wait(); // reap to avoid zombie
+            let _ = child.wait();
             return (-3, false, String::new());
         }
         match child.try_wait() {
             Ok(Some(status)) => {
-                let mut out = String::new();
-                use std::io::Read;
-                if let Some(mut s) = child.stdout.take() { let _ = s.read_to_string(&mut out); }
-                if let Some(mut e) = child.stderr.take() { let _ = e.read_to_string(&mut out); }
-                return (status.code().unwrap_or(-1), false, out);
+                let code = status.code().unwrap_or(-1);
+                let elapsed = start.elapsed().as_millis();
+                eprintln!(
+                    "[autocompress] run_process: DONE in {}ms, exit_code={}",
+                    elapsed, code
+                );
+                return (code, false, String::new());
             }
             Ok(None) => {
-                if start.elapsed() >= Duration::from_secs(timeout_secs.max(0) as u64) {
+                let elapsed = start.elapsed();
+                if elapsed >= Duration::from_secs(timeout_secs.max(0) as u64) {
+                    eprintln!(
+                        "[autocompress] run_process: TIMEOUT after {}s, killing child",
+                        elapsed.as_secs()
+                    );
                     let _ = child.kill();
                     let _ = child.wait();
                     return (-2, true, String::new());
                 }
                 std::thread::sleep(Duration::from_millis(100));
             }
-            Err(_) => return (-1, false, String::new()),
+            Err(e) => {
+                eprintln!("[autocompress] run_process: try_wait ERROR: {}", e);
+                return (-1, false, String::new());
+            }
         }
     }
 }
@@ -81,7 +108,6 @@ pub fn compress(params: &CompressParams, cancel: &AtomicBool) -> CompressResult 
 
     let mut args: Vec<String> = vec!["-i".into(), params.input_path.clone()];
     if !params.arguments.is_empty() {
-        // split ffmpeg args on whitespace (mirrors passing a raw arg string)
         args.extend(params.arguments.split_whitespace().map(String::from));
     }
     args.push("-y".into());
@@ -94,13 +120,9 @@ pub fn compress(params: &CompressParams, cancel: &AtomicBool) -> CompressResult 
     if code == -3 {
         result.cancelled = true;
         result.error_message = "压缩已取消".into();
-        // Delete partial output. On Windows, right after ffmpeg is killed the
-        // file handle may still be held by the OS briefly (or by Defender/indexer
-        // scanning the file it just released) — so retry a few times.
         safe_delete_retry(Path::new(&params.output_path), 5);
     } else if timed_out {
         result.error_message = format!("压缩超时 ({}s)", params.timeout_seconds);
-        // Clean up partial output on timeout (same retry rationale as above).
         safe_delete_retry(Path::new(&params.output_path), 5);
     } else if code == -1 {
         result.error_message = "无法启动 ffmpeg 进程".into();
@@ -114,7 +136,8 @@ pub fn compress(params: &CompressParams, cancel: &AtomicBool) -> CompressResult 
     result
 }
 
-/// Probe ffmpeg availability + version. Mirrors CompressionEngine::probeFfmpeg.
+/// Probe ffmpeg availability + version. Uses `Command::output()` to avoid
+/// pipe-deadlock (output() spawns internal reader threads).
 pub fn probe_ffmpeg(path: &str) -> FfmpegStatus {
     let mut s = FfmpegStatus::default();
     if path.is_empty() {
@@ -126,16 +149,36 @@ pub fn probe_ffmpeg(path: &str) -> FfmpegStatus {
         s.error = format!("ffmpeg 路径不存在: {}", path);
         return s;
     }
-    let no_cancel = AtomicBool::new(false);
-    let (code, timed_out, out) = run_process(path, &["-version"], 5, &no_cancel);
-    if code == -1 {
-        s.error = "无法启动 ffmpeg".into();
+
+    eprintln!("[autocompress] probe_ffmpeg: probing {}", path);
+
+    let output = match base_command(path).arg("-version").output() {
+        Ok(o) => {
+            eprintln!(
+                "[autocompress] probe_ffmpeg: output OK, exit={}, stdout={}B, stderr={}B",
+                o.status.code().unwrap_or(-1),
+                o.stdout.len(),
+                o.stderr.len()
+            );
+            o
+        }
+        Err(e) => {
+            eprintln!("[autocompress] probe_ffmpeg: SPAWN FAILED: {}", e);
+            s.error = "无法启动 ffmpeg".into();
+            return s;
+        }
+    };
+
+    let exit_code = output.status.code().unwrap_or(-1);
+    if exit_code != 0 {
+        s.error = format!("ffmpeg 退出码: {}", exit_code);
         return s;
     }
-    if timed_out || code != 0 {
-        s.error = format!("ffmpeg 退出码: {}", code);
-        return s;
-    }
+
+    // ffmpeg outputs version info to stderr, but check stdout too
+    let out = String::from_utf8_lossy(&output.stdout).to_string()
+        + &String::from_utf8_lossy(&output.stderr).to_string();
+
     match out.find("version") {
         None => { s.error = "无法解析 version".into(); }
         Some(pos) => {
@@ -148,10 +191,14 @@ pub fn probe_ffmpeg(path: &str) -> FfmpegStatus {
             if ver.is_empty() {
                 s.error = "version 为空".into();
             } else {
+                eprintln!("[autocompress] probe_ffmpeg: version='{}'", ver);
                 s.version = ver;
                 s.ready = true;
             }
         }
+    }
+    if !s.ready && s.error.is_empty() {
+        s.error = "ffmpeg 探测失败".into();
     }
     s
 }
@@ -178,6 +225,6 @@ mod tests {
     fn compress_reports_exit_code() {
         let cancel = AtomicBool::new(false);
         let out = run_process("cmd", &["/C", "exit", "0"], 5, &cancel);
-        assert_eq!(out.0, 0); // exit code
+        assert_eq!(out.0, 0);
     }
 }

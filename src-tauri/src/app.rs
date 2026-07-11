@@ -317,7 +317,15 @@ impl AppCore {
                 output_path: temp_path.to_string_lossy().to_string(),
                 timeout_seconds: timeout,
             };
+            eprintln!(
+                "[autocompress] compressing {}: ffmpeg={}, timeout={}s, args={}",
+                sf.relative_path, ffmpeg_path, timeout, cparams.arguments
+            );
             let cres = engine::compress(&cparams, &self.cancel_flag);
+            eprintln!(
+                "[autocompress] compress result: success={}, exit_code={}, cancelled={}, dur_ms={}, err={}",
+                cres.success, cres.exit_code, cres.cancelled, cres.duration_ms, cres.error_message
+            );
 
             // If cancelled during compression, delete the temp file we just created
             // for this file and break. Use a retrying delete: on Windows the OS may
@@ -346,9 +354,14 @@ impl AppCore {
                 std::fs::metadata(&temp_path).map(|m| m.len()).unwrap_or(0)
             } else { 0 };
 
-            // Compute the final (renamed) path ONCE, based on the relative path,
-            // so comparison/rename and the recorded result stay consistent.
-            let final_name = matcher.apply_rename(&sf.relative_path);
+            // Compute the final (renamed) path from just the filename (not the
+            // full relative path) — otherwise parent.join(rename("subdir/a.mp4"))
+            // duplicates the directory component.
+            let orig_name = orig
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or(&sf.relative_path);
+            let final_name = matcher.apply_rename(orig_name);
             let final_path = parent.join(&final_name).to_string_lossy().to_string();
 
             let mut fr = file_compare::compare_and_cleanup(

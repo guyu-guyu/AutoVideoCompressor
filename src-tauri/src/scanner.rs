@@ -45,6 +45,11 @@ pub fn compute_next_run_set(mut files: Vec<ScanFile>, max_compress_size_bytes: O
 }
 
 /// Scan a directory per its config. Mirrors FileScanner::scan.
+/// Strip the Windows canonicalize `\\?\` prefix — ffmpeg doesn't handle it.
+fn strip_verbatim_prefix(p: &str) -> &str {
+    if p.starts_with("\\\\?\\") { &p[4..] } else { p }
+}
+
 pub fn scan(config: &DirectoryConfig) -> Vec<ScanFile> {
     let mut out = Vec::new();
     if !config.valid {
@@ -58,6 +63,10 @@ pub fn scan(config: &DirectoryConfig) -> Vec<ScanFile> {
 
     for fi in list_files_recursive(root) {
         let abs = std::fs::canonicalize(&fi.path).unwrap_or_else(|_| fi.path.clone());
+        let abs_clean = {
+            let s = abs.to_string_lossy().into_owned();
+            strip_verbatim_prefix(&s).to_string()
+        };
         let relative = match abs.strip_prefix(&root_abs) {
             Ok(r) => r.to_string_lossy().replace('\\', "/"),
             Err(_) => continue,
@@ -65,12 +74,18 @@ pub fn scan(config: &DirectoryConfig) -> Vec<ScanFile> {
         if !config.passes_filters(&relative, fi.size, fi.modified, fi.created) {
             continue;
         }
+        // temp_name is just the filename (last component) with _tmp inserted
+        let fname = Path::new(&relative)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or(&relative);
+
         out.push(ScanFile {
-            temp_name: insert_temp_suffix(&relative),
+            temp_name: insert_temp_suffix(fname),
             final_name: config.matcher.apply_rename(&relative),
             cycle_risk: config.matcher.has_cycle_risk(&relative),
             relative_path: relative,
-            absolute_path: abs.to_string_lossy().to_string(),
+            absolute_path: abs_clean,
             file_size: fi.size,
             modified: fi.modified,
             created: fi.created,
