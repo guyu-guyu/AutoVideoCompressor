@@ -1,6 +1,10 @@
-# AutoCompress
+# AutoVideoCompressor
 
 基于 **Tauri 2 + Rust + Vue 3** 的 Windows 视频压缩桌面工具。自动扫描指定目录下的视频文件，调用 ffmpeg 压缩，保留更小的文件。
+
+> **命名说明**：项目名称为 **AutoVideoCompressor**。代码内部的包名（`autocompress`）、产品显示名（`AutoCompress`）、配置目录（`%APPDATA%/AutoCompress`）、隐藏配置目录（`.autocompress`）等均为历史遗留的内部标识符，与实际代码保持一致，本文档按需原样引用，不代表项目名称变更。
+
+> 技术栈、代码结构及关键实现细节见 [docs/PROJECT.md](docs/PROJECT.md)。
 
 ## 功能
 
