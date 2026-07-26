@@ -49,23 +49,23 @@ pub fn run_process(program: &str, args: &[&str], timeout_secs: i64, cancel: &Ato
         .stdout(Stdio::null())
         .stderr(Stdio::null());
     eprintln!(
-        "[autocompress] run_process: spawning {} {:?} (timeout={}s)",
+        "[avc] run_process: spawning {} {:?} (timeout={}s)",
         program, args, timeout_secs
     );
     let mut child = match cmd.spawn() {
         Ok(c) => {
-            eprintln!("[autocompress] run_process: spawn OK, pid={:?}", c.id());
+            eprintln!("[avc] run_process: spawn OK, pid={:?}", c.id());
             c
         }
         Err(e) => {
-            eprintln!("[autocompress] run_process: SPAWN FAILED: {}", e);
+            eprintln!("[avc] run_process: SPAWN FAILED: {}", e);
             return (-1, false, String::new());
         }
     };
     let start = Instant::now();
     loop {
         if cancel.load(Ordering::SeqCst) {
-            eprintln!("[autocompress] run_process: CANCELLED, killing child");
+            eprintln!("[avc] run_process: CANCELLED, killing child");
             let _ = child.kill();
             let _ = child.wait();
             return (-3, false, String::new());
@@ -75,7 +75,7 @@ pub fn run_process(program: &str, args: &[&str], timeout_secs: i64, cancel: &Ato
                 let code = status.code().unwrap_or(-1);
                 let elapsed = start.elapsed().as_millis();
                 eprintln!(
-                    "[autocompress] run_process: DONE in {}ms, exit_code={}",
+                    "[avc] run_process: DONE in {}ms, exit_code={}",
                     elapsed, code
                 );
                 return (code, false, String::new());
@@ -84,7 +84,7 @@ pub fn run_process(program: &str, args: &[&str], timeout_secs: i64, cancel: &Ato
                 let elapsed = start.elapsed();
                 if elapsed >= Duration::from_secs(timeout_secs.max(0) as u64) {
                     eprintln!(
-                        "[autocompress] run_process: TIMEOUT after {}s, killing child",
+                        "[avc] run_process: TIMEOUT after {}s, killing child",
                         elapsed.as_secs()
                     );
                     let _ = child.kill();
@@ -94,7 +94,7 @@ pub fn run_process(program: &str, args: &[&str], timeout_secs: i64, cancel: &Ato
                 std::thread::sleep(Duration::from_millis(100));
             }
             Err(e) => {
-                eprintln!("[autocompress] run_process: try_wait ERROR: {}", e);
+                eprintln!("[avc] run_process: try_wait ERROR: {}", e);
                 return (-1, false, String::new());
             }
         }
@@ -150,12 +150,12 @@ pub fn probe_ffmpeg(path: &str) -> FfmpegStatus {
         return s;
     }
 
-    eprintln!("[autocompress] probe_ffmpeg: probing {}", path);
+    eprintln!("[avc] probe_ffmpeg: probing {}", path);
 
     let output = match base_command(path).arg("-version").output() {
         Ok(o) => {
             eprintln!(
-                "[autocompress] probe_ffmpeg: output OK, exit={}, stdout={}B, stderr={}B",
+                "[avc] probe_ffmpeg: output OK, exit={}, stdout={}B, stderr={}B",
                 o.status.code().unwrap_or(-1),
                 o.stdout.len(),
                 o.stderr.len()
@@ -163,7 +163,7 @@ pub fn probe_ffmpeg(path: &str) -> FfmpegStatus {
             o
         }
         Err(e) => {
-            eprintln!("[autocompress] probe_ffmpeg: SPAWN FAILED: {}", e);
+            eprintln!("[avc] probe_ffmpeg: SPAWN FAILED: {}", e);
             s.error = "无法启动 ffmpeg".into();
             return s;
         }
@@ -191,7 +191,7 @@ pub fn probe_ffmpeg(path: &str) -> FfmpegStatus {
             if ver.is_empty() {
                 s.error = "version 为空".into();
             } else {
-                eprintln!("[autocompress] probe_ffmpeg: version='{}'", ver);
+                eprintln!("[avc] probe_ffmpeg: version='{}'", ver);
                 s.version = ver;
                 s.ready = true;
             }

@@ -1,28 +1,172 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use autocompress_lib::{app, commands, logger};
 use app::AppCore;
+use autovideocompressor_lib::{app, commands, logger, schedule_center};
+use autovideocompressor_lib::config::directory_config::DirectoryConfig;
+use fs4::FileExt;
+use std::fs::{File, OpenOptions};
 use std::sync::Arc;
 use tauri::{Emitter, Manager, tray::TrayIconBuilder, menu::{Menu, MenuItem}};
 
-fn run_once(core: &Arc<AppCore>) {
-    let dirs = core.config.lock().unwrap().directories.clone();
-    for d in dirs {
-        if d.enabled {
-            core.execute_for_directory(&d.path, false);
+// ======================================================================
+// 单例锁：通过文件排他锁确保只有一个实例活跃
+// ======================================================================
+
+/// 尝试获取单例锁。成功返回 Some(File)（锁持有时进程退出才释放），
+/// 失败返回 None（另一实例已持有）。
+fn try_acquire_singleton() -> Option<File> {
+    let path = autovideocompressor_lib::app::singleton_lock_path();
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let file = OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .open(&path)
+        .ok()?;
+    if file.try_lock_exclusive().is_ok() {
+        Some(file)
+    } else {
+        None
+    }
+}
+
+// ======================================================================
+// IPC：向主实例写入压缩请求（--run-once 竞争锁失败时使用）
+// ======================================================================
+
+/// 向主实例写入一条压缩请求，写完后立即退出。
+fn request_compression(dir: &str) -> Result<(), String> {
+    let path = autovideocompressor_lib::util::fs_util::config_base_dir().join("pending");
+    std::fs::create_dir_all(&path)
+        .map_err(|e| format!("无法创建 IPC 目录: {e}"))?;
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let filename = format!("{ts}.pending");
+    let content = serde_json::json!({"dir": dir}).to_string();
+    std::fs::write(path.join(filename), &content)
+        .map_err(|e| format!("无法写入 IPC 请求: {e}"))?;
+    Ok(())
+}
+
+// ======================================================================
+// 目录有效性检查 & 清理
+// ======================================================================
+
+/// 验证目录是否有效。如果无效则清理对应的 ScheduleCenter 计划任务，
+/// 返回 true 表示可以继续压缩。
+fn validate_and_run_or_cleanup(core: &Arc<AppCore>, dir: &str) -> bool {
+    // 1. 目录是否在磁盘上存在
+    if !std::path::Path::new(dir).exists() {
+        eprintln!("[main] 目录 '{dir}' 不存在，清理 ScheduleCenter 任务");
+        cleanup_schedule_task(dir);
+        return false;
+    }
+    // 2. 配置文件是否有效
+    let cfg = DirectoryConfig::load(dir);
+    if !cfg.valid {
+        eprintln!("[main] 目录 '{dir}' 配置无效，清理 ScheduleCenter 任务");
+        cleanup_schedule_task(dir);
+        return false;
+    }
+    // 有效 → 执行压缩
+    core.execute_for_directory(dir, false);
+    true
+}
+
+/// 安全清理 ScheduleCenter 任务（任务不存在时自动忽略）。
+fn cleanup_schedule_task(dir: &str) {
+    match schedule_center::ScheduleCenter::new().remove_task(dir) {
+        Ok(()) => eprintln!("[main] 已清理 ScheduleCenter 任务: {dir}"),
+        Err(e) => eprintln!("[main] 清理 ScheduleCenter 任务失败: {e}"),
+    }
+}
+
+// ======================================================================
+// run_once 逻辑
+// ======================================================================
+
+/// 对指定目录（或全部已启用目录）执行一轮压缩。
+/// 此函数假定调用方已获得单例锁。
+fn run_once(core: &Arc<AppCore>, dir_filter: Option<&str>) {
+    match dir_filter {
+        Some(dir) => {
+            validate_and_run_or_cleanup(core, dir);
+        }
+        None => {
+            let dirs = core.config.lock().unwrap().directories.clone();
+            for d in &dirs {
+                if d.enabled {
+                    validate_and_run_or_cleanup(core, &d.path);
+                }
+            }
         }
     }
 }
+
+/// 处理所有待处理的 IPC 请求（--run-once 竞争锁失败时留下的 .pending 文件）。
+/// 此函数在 headless（非 UI）环境下使用 execute_for_directory 同步执行。
+fn process_pending_jobs_headless(core: &Arc<AppCore>) {
+    let dirs = AppCore::collect_pending_requests();
+    for dir in dirs {
+        validate_and_run_or_cleanup(core, &dir);
+    }
+}
+
+// ======================================================================
+// --run-once 入口
+// ======================================================================
+
+/// --run-once [--directory <path>] 处理流程：
+///   1. 尝试获取单例锁
+///   2. 获取成功 → 处理遗留 IPC + 执行压缩 → 退出
+///   3. 获取失败 → 写 IPC 请求 → 退出（由主实例接管）
+fn handle_run_once(core: &Arc<AppCore>, args: &[String]) {
+    let dir_filter = args.windows(2)
+        .find(|w| w[0] == "--directory")
+        .map(|w| w[1].as_str());
+
+    if let Some(_lock) = try_acquire_singleton() {
+        // 我们是唯一实例，处理遗留 IPC 请求后执行本次压缩
+        process_pending_jobs_headless(core);
+        run_once(core, dir_filter);
+    } else {
+        // 主实例正在运行，通过 IPC 委托
+        if let Some(dir) = dir_filter {
+            eprintln!("[main] 主实例正在运行，通过 IPC 请求压缩: {dir}");
+            if let Err(e) = request_compression(dir) {
+                eprintln!("[main] IPC 请求失败: {e}");
+            }
+        }
+        // 无 --directory 时（旧版全目录压缩），主实例的调度器已处理，静默退出
+    }
+}
+
+// ======================================================================
+// main
+// ======================================================================
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let core = AppCore::new();
 
-    // --run-once: headless single cycle for Task Scheduler, then exit.
+    // --run-once [--directory <path>]: headless 单次压缩（ScheduleCenter 触发）。
     if args.iter().any(|a| a == "--run-once") {
-        run_once(&core);
+        handle_run_once(&core, &args);
         return;
     }
+
+    // 交互模式：获取单例锁，防止重复启动。
+    let _singleton = match try_acquire_singleton() {
+        Some(l) => l,
+        None => {
+            eprintln!("[main] 已有实例正在运行，退出");
+            return;
+        }
+    };
 
     // Startup: per-directory log cleanup using global retention.
     {
@@ -63,12 +207,28 @@ fn main() {
             let handle = app.handle().clone();
             core_for_setup.set_app_handle(handle.clone());
 
-            // Scheduler: trigger a single directory (scheduled → advance).
-            let core_cb = Arc::clone(&core_for_setup);
-            core_for_setup.scheduler.start(move |dir| {
-                core_cb.start_for_directory(dir, true);
-            });
-            core_for_setup.refresh_schedule_table();
+            // 启动 IPC 监控（始终运行，接收 --run-once 的请求）。
+            core_for_setup.start_pending_jobs_monitor();
+
+            // 调度后端选择：schedulecenter 或 inprocess（默认）。
+            let use_sc = core_for_setup.config.lock().unwrap().use_schedule_center;
+            if use_sc {
+                // ScheduleCenter 模式：将目录级调度同步为 Windows 计划任务，
+                // 由 Windows Task Scheduler 在预定时间触发 exe --run-once --directory <path>。
+                // 应用本身不启动轮询调度器，避免双重触发。
+                eprintln!("[main] 使用 ScheduleCenter 调度后端");
+                let sc = schedule_center::ScheduleCenter::new();
+                let dirs = core_for_setup.config.lock().unwrap().directories.clone();
+                sc.sync_all(&dirs);
+                core_for_setup.refresh_schedule_table();
+            } else {
+                // 默认 inprocess 模式：应用内轮询调度。
+                let core_cb = Arc::clone(&core_for_setup);
+                core_for_setup.scheduler.start(move |dir| {
+                    core_cb.start_for_directory(dir, true);
+                });
+                core_for_setup.refresh_schedule_table();
+            }
             core_for_setup.check_ffmpeg_async();
 
             // Tray

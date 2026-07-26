@@ -10,7 +10,7 @@ const version = tauriConf.version || pkg.version;
 const product = tauriConf.productName || "AutoCompress";
 
 const releaseDir = path.join(__dirname, "..", "src-tauri", "target", "release");
-const src = path.join(releaseDir, "autocompress.exe");
+const src = path.join(releaseDir, "autovideocompressor.exe");
 const dst = path.join(releaseDir, `${product}_${version}.exe`);
 
 if (!fs.existsSync(src)) {

@@ -2,6 +2,7 @@ use crate::app::AppCore;
 use crate::config::directory_config::DirectoryConfig;
 use crate::error::{AppError, AppResult};
 use crate::logger;
+use crate::schedule_center::ScheduleCenter;
 use crate::scanner;
 use crate::types::*;
 use std::sync::Arc;
@@ -24,6 +25,7 @@ pub fn get_global_config(core: Core) -> serde_json::Value {
         "startWithWindows": c.start_with_windows,
         "logRetentionDays": c.log_retention_days,
         "language": c.language,
+        "useScheduleCenter": c.use_schedule_center,
         "templates": c.templates.iter().map(|(n,p)|
             serde_json::json!({"name": n, "params": p})).collect::<Vec<_>>(),
     })
@@ -31,14 +33,19 @@ pub fn get_global_config(core: Core) -> serde_json::Value {
 
 #[tauri::command]
 pub fn save_global_config(core: Core, config: serde_json::Value) -> AppResult<()> {
+    let old_use_sc: bool;
+    let new_use_sc: bool;
     {
         let mut c = core.config.lock().unwrap();
+        old_use_sc = c.use_schedule_center;
         if let Some(v) = config.get("ffmpegPath").and_then(|x| x.as_str()) { c.ffmpeg_path = v.into(); }
         if let Some(v) = config.get("ffmpegTimeoutSeconds").and_then(|x| x.as_i64()) { c.ffmpeg_timeout_seconds = v; }
         if let Some(v) = config.get("minimizeToTray").and_then(|x| x.as_bool()) { c.minimize_to_tray = v; }
         if let Some(v) = config.get("startWithWindows").and_then(|x| x.as_bool()) { c.start_with_windows = v; }
         if let Some(v) = config.get("logRetentionDays").and_then(|x| x.as_i64()) { c.log_retention_days = v; }
         if let Some(v) = config.get("language").and_then(|x| x.as_str()) { c.language = v.into(); }
+        if let Some(v) = config.get("useScheduleCenter").and_then(|x| x.as_bool()) { c.use_schedule_center = v; }
+        new_use_sc = c.use_schedule_center;
         if let Some(arr) = config.get("templates").and_then(|x| x.as_array()) {
             c.templates = arr.iter().filter_map(|t| {
                 let n = t.get("name").and_then(|x| x.as_str())?.to_string();
@@ -49,16 +56,36 @@ pub fn save_global_config(core: Core, config: serde_json::Value) -> AppResult<()
         if !c.save() { return Err(AppError::new("保存全局配置失败")); }
         core.template_manager.lock().unwrap().set_templates(c.templates.clone());
     }
+
+    // 如果 use_schedule_center 发生了切换，需要清理或同步所有任务。
+    if old_use_sc != new_use_sc {
+        let sc = ScheduleCenter::new();
+        if new_use_sc {
+            // 切换到 ScheduleCenter：创建所有已启用目录的定时任务
+            let dirs = core.config.lock().unwrap().directories.clone();
+            sc.sync_all(&dirs);
+        } else {
+            // 切换到 inprocess：清理所有 ScheduleCenter 任务
+            sc.remove_all();
+        }
+    }
+
     core.refresh_schedule_table();
     Ok(())
 }
 
 #[tauri::command]
 pub fn add_directory(core: Core, path: String) -> AppResult<()> {
-    {
+    let sc_sync = {
         let mut c = core.config.lock().unwrap();
         c.add_directory(&path);
         if !c.save() { return Err(AppError::new("保存配置失败")); }
+        c.use_schedule_center
+    };
+    if sc_sync {
+        let cfg = DirectoryConfig::load(&path);
+        ScheduleCenter::new().sync_directory(&path, cfg.schedule_time.as_deref(), true)
+            .map_err(|e| AppError::new(&e))?;
     }
     core.refresh_schedule_table();
     Ok(())
@@ -69,12 +96,16 @@ pub fn remove_directory(core: Core, path: String, force: bool) -> AppResult<()> 
     if core.compressor_running.load(std::sync::atomic::Ordering::SeqCst) && !force {
         return Err(AppError::new("正在压缩,需确认强制移除"));
     }
-    {
+    let sc_sync = {
         let mut c = core.config.lock().unwrap();
         if let Some(i) = c.directories.iter().position(|d| d.path == path) {
             c.remove_directory(i);
         }
         if !c.save() { return Err(AppError::new("保存配置失败")); }
+        c.use_schedule_center
+    };
+    if sc_sync {
+        let _ = ScheduleCenter::new().remove_task(&path);
     }
     core.refresh_schedule_table();
     Ok(())
@@ -82,12 +113,18 @@ pub fn remove_directory(core: Core, path: String, force: bool) -> AppResult<()> 
 
 #[tauri::command]
 pub fn set_directory_enabled(core: Core, path: String, enabled: bool) -> AppResult<()> {
-    {
+    let sc_sync = {
         let mut c = core.config.lock().unwrap();
         if let Some(i) = c.directories.iter().position(|d| d.path == path) {
             c.set_enabled(i, enabled);
         }
         if !c.save() { return Err(AppError::new("保存配置失败")); }
+        c.use_schedule_center
+    };
+    if sc_sync {
+        let cfg = DirectoryConfig::load(&path);
+        ScheduleCenter::new().sync_directory(&path, cfg.schedule_time.as_deref(), enabled)
+            .map_err(|e| AppError::new(&e))?;
     }
     core.refresh_schedule_table();
     Ok(())
@@ -163,6 +200,11 @@ pub fn save_directory_config(core: Core, path: String, config: DirConfigView) ->
     }
     let cfg = apply_view(&path, &config);
     if !cfg.save() { return Err(AppError::new("写入配置文件失败")); }
+    let sc_sync = { core.config.lock().unwrap().use_schedule_center };
+    if sc_sync {
+        ScheduleCenter::new().sync_directory(&path, cfg.schedule_time.as_deref(), true)
+            .map_err(|e| AppError::new(&e))?;
+    }
     core.refresh_schedule_table();
     Ok(())
 }

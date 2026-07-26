@@ -6,13 +6,23 @@ use crate::logger::{Logger, now_for_filename};
 use crate::scanner;
 use crate::scheduler::{compute_next_run, DirSchedule, Scheduler};
 use crate::types::*;
-use crate::util::fs_util::{has_enough_space, safe_delete_retry};
+use crate::util::fs_util::{config_base_dir, has_enough_space, safe_delete_retry};
 use crate::util::string_util::format_file_size;
 use chrono::{Datelike, Local, Timelike};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
+
+/// IPC pending jobs directory path.
+fn pending_jobs_dir() -> std::path::PathBuf {
+    config_base_dir().join("pending")
+}
+
+/// Singleton lock file path.
+pub fn singleton_lock_path() -> std::path::PathBuf {
+    config_base_dir().join("singleton.lock")
+}
 
 pub struct AppCore {
     pub config: Mutex<GlobalConfig>,
@@ -318,12 +328,12 @@ impl AppCore {
                 timeout_seconds: timeout,
             };
             eprintln!(
-                "[autocompress] compressing {}: ffmpeg={}, timeout={}s, args={}",
+                "[avc] compressing {}: ffmpeg={}, timeout={}s, args={}",
                 sf.relative_path, ffmpeg_path, timeout, cparams.arguments
             );
             let cres = engine::compress(&cparams, &self.cancel_flag);
             eprintln!(
-                "[autocompress] compress result: success={}, exit_code={}, cancelled={}, dur_ms={}, err={}",
+                "[avc] compress result: success={}, exit_code={}, cancelled={}, dur_ms={}, err={}",
                 cres.success, cres.exit_code, cres.cancelled, cres.duration_ms, cres.error_message
             );
 
@@ -337,7 +347,7 @@ impl AppCore {
                 if let Some(p) = current_temp.take() {
                     if !safe_delete_retry(&p, 5) {
                         eprintln!(
-                            "[autocompress] failed to remove temp file after cancel: {}",
+                            "[avc] failed to remove temp file after cancel: {}",
                             p.display()
                         );
                     }
@@ -431,6 +441,58 @@ impl AppCore {
     fn update_ffmpeg_status(&self, status: FfmpegStatus) {
         *self.ffmpeg_status.lock().unwrap() = status.clone();
         self.emit("ffmpeg-status-changed", status);
+    }
+
+    // ------------------------------------------------------------------
+    // IPC: 接收 --run-once 委托的压缩请求
+    // ------------------------------------------------------------------
+
+    /// 收集并清理 IPC 请求文件，返回请求压缩的目录列表。
+    pub fn collect_pending_requests() -> Vec<String> {
+        let dir = pending_jobs_dir();
+        if !dir.exists() {
+            return Vec::new();
+        }
+        let entries: Vec<_> = match std::fs::read_dir(&dir) {
+            Ok(e) => e.filter_map(|e| e.ok()).collect(),
+            Err(_) => return Vec::new(),
+        };
+        let mut result = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for entry in &entries {
+            let path = entry.path();
+            if path.extension().map(|e| e == "pending").unwrap_or(false) {
+                if let Ok(content) = std::fs::read_to_string(&path) {
+                    if let Ok(j) = serde_json::from_str::<serde_json::Value>(&content) {
+                        if let Some(d) = j.get("dir").and_then(|d| d.as_str()).map(String::from) {
+                            if seen.insert(d.clone()) {
+                                result.push(d);
+                            }
+                        }
+                    }
+                }
+                let _ = std::fs::remove_file(&path);
+            }
+        }
+        result
+    }
+
+    /// 启动后台线程，定期检查并处理 IPC 请求。
+    pub fn start_pending_jobs_monitor(self: &Arc<Self>) {
+        let me = Arc::clone(self);
+        std::thread::spawn(move || {
+            loop {
+                let dirs = AppCore::collect_pending_requests();
+                for dir in dirs {
+                    if me.cancel_flag.load(Ordering::SeqCst) {
+                        // 正在停止，跳过本次请求
+                        continue;
+                    }
+                    let _ = me.start_for_directory(dir, true);
+                }
+                std::thread::sleep(std::time::Duration::from_secs(2));
+            }
+        });
     }
 }
 

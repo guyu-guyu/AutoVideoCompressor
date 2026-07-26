@@ -57,6 +57,7 @@ export interface GlobalConfig {
   ffmpegPath: string; ffmpegTimeoutSeconds: number;
   minimizeToTray: boolean; startWithWindows: boolean;
   logRetentionDays: number; language: string; templates: Template[];
+  useScheduleCenter: boolean;
 }
 
 export interface CompressProgress {

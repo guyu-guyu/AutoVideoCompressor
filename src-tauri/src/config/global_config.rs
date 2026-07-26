@@ -19,6 +19,8 @@ pub struct GlobalConfig {
     pub log_retention_days: i64,
     pub language: String,
     pub templates: Vec<(String, String)>,
+    /// 调度后端：true = ScheduleCenter（Windows 计划任务），false = 应用内轮询（默认）。
+    pub use_schedule_center: bool,
 }
 
 fn normalize(p: &str) -> String {
@@ -50,6 +52,7 @@ impl GlobalConfig {
                 ("H.264 平衡".into(), "-c:v libx264 -crf 23 -preset medium -c:a aac -b:a 192k".into()),
                 ("H.264 快速".into(), "-c:v libx264 -crf 28 -preset fast -c:a aac -b:a 128k".into()),
             ],
+            use_schedule_center: false,
         }
     }
 
@@ -91,6 +94,7 @@ impl GlobalConfig {
         c.start_with_windows = j.get("start_with_windows").and_then(|v| v.as_bool()).unwrap_or(false);
         c.log_retention_days = j.get("log_retention_days").and_then(|v| v.as_i64()).unwrap_or(90);
         c.language = j.get("language").and_then(|v| v.as_str()).unwrap_or("zh-CN").to_string();
+        c.use_schedule_center = j.get("use_schedule_center").and_then(|v| v.as_bool()).unwrap_or(false);
 
         if let Some(Value::Array(arr)) = j.get("templates") {
             c.templates.clear();
@@ -124,6 +128,7 @@ impl GlobalConfig {
         j.insert("start_with_windows".into(), Value::from(self.start_with_windows));
         j.insert("log_retention_days".into(), Value::from(self.log_retention_days));
         j.insert("language".into(), Value::from(self.language.clone()));
+        j.insert("use_schedule_center".into(), Value::from(self.use_schedule_center));
         let tmpls: Vec<Value> = self.templates.iter().map(|(n, p)| {
             let mut m = serde_json::Map::new();
             m.insert("name".into(), Value::from(n.clone()));

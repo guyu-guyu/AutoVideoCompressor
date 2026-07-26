@@ -56,7 +56,7 @@ pub fn safe_delete_retry(path: &Path, attempts: u32) -> bool {
             Ok(_) => return true,
             Err(e) => {
                 eprintln!(
-                    "[autocompress] remove_file failed (attempt {}/{}) for {}: {}",
+                    "[avc] remove_file failed (attempt {}/{}) for {}: {}",
                     i + 1, attempts, path.display(), e
                 );
                 if i + 1 < attempts {

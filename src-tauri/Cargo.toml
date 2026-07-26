@@ -1,16 +1,16 @@
 [package]
-name = "autocompress"
-version = "0.1.0"
-description = "AutoCompress - Video compression tool"
+name = "autovideocompressor"
+version = "0.2.0"
+description = "AutoVideoCompressor - Video compression tool"
 authors = ["guyu"]
 edition = "2021"
 
 [lib]
-name = "autocompress_lib"
+name = "autovideocompressor_lib"
 path = "src/lib.rs"
 
 [[bin]]
-name = "autocompress"
+name = "autovideocompressor"
 path = "src/main.rs"
 
 [build-dependencies]

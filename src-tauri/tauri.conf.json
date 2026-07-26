@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "AutoCompress",
-  "version": "0.1.0",
-  "identifier": "com.autocompress.app",
+  "productName": "AutoVideoCompressor",
+  "version": "0.2.0",
+  "identifier": "com.autovideocompressor.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "AutoCompress",
+        "title": "AutoVideoCompressor",
         "width": 900,
         "height": 700,
         "resizable": true,
