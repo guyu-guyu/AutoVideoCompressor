@@ -36,8 +36,8 @@ jobs:
         with:
           workspaces: src-tauri
 
-      - name: Run Rust tests
-        run: cd src-tauri && cargo test
-
       - name: Build frontend (type-check + Vite)
         run: npm run build
+
+      - name: Run Rust tests
+        run: cd src-tauri && cargo test
