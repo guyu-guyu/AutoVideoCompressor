@@ -84,8 +84,8 @@ async function save() {
                 <n-checkbox v-model:checked="cfg.minimizeToTray"
                     >最小化到托盘</n-checkbox
                 >
-                <n-checkbox v-model:checked="cfg.useScheduleCenter"
-                    >使用 ScheduleCenter 调度（退出后仍按时启动）</n-checkbox
+                <n-checkbox v-model:checked="cfg.useWindowsTaskScheduler"
+                    >使用 Windows 计划任务（退出后仍按时启动）</n-checkbox
                 >
             </n-space>
 

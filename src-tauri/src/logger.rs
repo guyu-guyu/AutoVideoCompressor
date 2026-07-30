@@ -44,7 +44,7 @@ impl Logger {
         };
         let mut header = String::new();
         header.push_str("========================================\n");
-        header.push_str("AutoCompress Run Log\n");
+        header.push_str("AutoVideoCompressor Run Log\n");
         header.push_str(&format!("Start time: {}\n", now_iso()));
         header.push_str("Directories:\n");
         for d in &initial.directories {

@@ -2,14 +2,14 @@
 
 基于 **Tauri 2 + Rust + Vue 3** 的 Windows 视频压缩桌面工具。自动扫描指定目录下的视频文件，调用 ffmpeg 压缩，保留更小的文件。
 
-> **命名说明**：项目名称为 **AutoVideoCompressor**。代码内部的包名（`autocompress`）、产品显示名（`AutoCompress`）、配置目录（`%APPDATA%/AutoCompress`）、隐藏配置目录（`.autocompress`）等均为历史遗留的内部标识符，与实际代码保持一致，本文档按需原样引用，不代表项目名称变更。
+应用、包、可执行文件和全局数据目录统一使用 **AutoVideoCompressor**；每个监控目录内的配置子目录为兼容已有配置，仍保留名称 `.autocompress`。
 
 > 技术栈、代码结构及关键实现细节见 [docs/PROJECT.md](docs/PROJECT.md)。
 
 ## 功能
 
 - **Per-directory 独立配置** — 每个目录拥有独立的 include/exclude 规则、过滤器、重命名规则、调度时间
-- **Cron 定时调度** — 每天指定时间自动压缩，严格不补跑
+- **每日定时调度** — 可选择应用内调度或 Windows 计划任务；后者退出应用后仍能按时启动
 - **串行执行** — 同一时间只压缩一个目录，完成后自动处理队列中的下一个
 - **实时进度推送** — 逐文件压缩进度，支持手动停止
 - **循环压缩检测** — 自动识别重命名后再次匹配的白名单文件，标记风险
@@ -19,6 +19,7 @@
 - **压缩文件预览** — 显示匹配文件、压缩后文件名、大小、循环风险、单次限制状态
 - **系统托盘常驻** — 最小化到托盘、右键菜单（显示主窗口 / 退出）
 - **开机自启动**
+- **原生 Windows 计划任务** — 直接调用系统 `schtasks.exe`，不依赖第三方调度工具
 - **`--run-once` 模式** — 无窗口单次执行，供 Windows 任务计划程序调用
 
 ## 截图
@@ -30,8 +31,8 @@
 ### 二进制安装
 
 从 [Releases](../../releases) 下载最新版：
-- `AutoCompress_x.x.x_x64-setup.exe` — NSIS 安装程序（推荐）
-- `autocompress.exe` — 便携版，无需安装
+- `AutoVideoCompressor_x.x.x_x64-setup.exe` — NSIS 安装程序（推荐）
+- `autovideocompressor.exe` — 便携版，无需安装
 
 ### 依赖
 
@@ -66,7 +67,7 @@ npm run build:tauri
 ```
 
 产物：
-- `src-tauri/target/release/AutoCompress_x.x.x.exe` — 便携版
+- `src-tauri/target/release/AutoVideoCompressor_x.x.x.exe` — 便携版
 - `src-tauri/target/release/bundle/msi/` — MSI 安装包
 - `src-tauri/target/release/bundle/nsis/` — NSIS 安装包
 
@@ -84,7 +85,7 @@ npm run build:tauri
 
 ### 全局配置
 
-`%APPDATA%/AutoCompress/config.json`（扁平格式）：
+`%APPDATA%/AutoVideoCompressor/config.json`（扁平格式）：
 
 ```json
 {
@@ -93,6 +94,7 @@ npm run build:tauri
   "ffmpeg_timeout_seconds": 3600,
   "minimize_to_tray": true,
   "start_with_windows": false,
+  "use_windows_task_scheduler": false,
   "log_retention_days": 90,
   "templates": [
     { "name": "H.265 高质量", "params": "-c:v libx265 -crf 18 -preset slow -c:a aac -b:a 192k" },
@@ -123,14 +125,14 @@ npm run build:tauri
 
 ```bash
 # 无窗口运行一次（对所有已启用目录执行压缩，完成后退出）
-autocompress.exe --run-once
+autovideocompressor.exe --run-once
 ```
 
 ## 开发
 
 ```bash
 npm test                    # 前端组件测试 (Vitest)
-cargo test                  # Rust 单元测试 (36 tests)
+cargo test                  # Rust 单元测试
 ```
 
 ## 许可

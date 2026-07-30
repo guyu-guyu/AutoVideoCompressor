@@ -59,7 +59,7 @@ onUnmounted(() => {
     <div class="titlebar" @mousedown="startDrag">
         <div class="brand">
             <span class="logo">🗜</span>
-            <span class="name">AutoCompress</span>
+            <span class="name">AutoVideoCompressor</span>
         </div>
         <div class="actions">
             <button class="action" title="设置" @click="emit('settings')">

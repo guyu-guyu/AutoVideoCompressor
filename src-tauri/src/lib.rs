@@ -4,7 +4,7 @@ pub mod util;
 pub mod config;
 pub mod scanner;
 pub mod scheduler;
-pub mod schedule_center;
+pub mod windows_task_scheduler;
 pub mod logger;
 pub mod compressor;
 pub mod app;

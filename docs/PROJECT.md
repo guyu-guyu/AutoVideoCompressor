@@ -5,7 +5,7 @@
 
 本文档面向要理解、维护或二次开发本项目的工程师，覆盖技术栈、代码结构与关键实现细节。
 
-> **命名说明**：项目名称为 **AutoVideoCompressor**。代码内部的包名（`autocompress`）、产品显示名（`AutoCompress`）、配置目录（`%APPDATA%/AutoCompress`）、隐藏配置目录（`.autocompress`）等均为历史遗留的内部标识符，与实际代码保持一致，本文档按需原样引用，不代表项目名称变更。
+应用、包、可执行文件和全局数据目录统一使用 **AutoVideoCompressor**；每个监控目录内的配置子目录为兼容已有配置，仍保留名称 `.autocompress`。
 
 ---
 
@@ -86,9 +86,10 @@ webviewApp/
 │       ├── error.rs                      # AppError / AppResult
 │       ├── scanner.rs                     # 文件扫描 + 批次计算(compute_next_run_set)
 │       ├── scheduler.rs                    # 定时调度器（严格不补跑）
+│       ├── windows_task_scheduler.rs        # 直接调用 schtasks.exe 管理 Windows 计划任务
 │       ├── logger.rs                        # 运行日志读写（人类可读 + JSON 块）
 │       ├── config/
-│       │   ├── global_config.rs               # 全局配置（%APPDATA%/AutoCompress/config.json）
+│       │   ├── global_config.rs               # 全局配置（%APPDATA%/AutoVideoCompressor/config.json）
 │       │   ├── directory_config.rs             # 目录级配置（<dir>/.autocompress/config.json）
 │       │   ├── pattern_matcher.rs               # include/exclude/rename 正则引擎
 │       │   └── template_manager.rs               # ffmpeg 参数模板解析
@@ -150,7 +151,7 @@ fn emit<S: serde::Serialize + Clone>(&self, event: &str, payload: S) {
 |------|------|------|
 | 目录管理 | `list_directories` | 返回一级页面所有目录卡片信息（聚合扫描结果+状态+调度） |
 | | `add_directory` / `remove_directory` / `set_directory_enabled` | 增删改监控目录列表 |
-| 全局配置 | `get_global_config` / `save_global_config` | 读写 `%APPDATA%/AutoCompress/config.json` |
+| 全局配置 | `get_global_config` / `save_global_config` | 读写 `%APPDATA%/AutoVideoCompressor/config.json` |
 | 目录配置 | `get_directory_config` / `save_directory_config` / `create_directory_config` | 读写 `<dir>/.autocompress/config.json`；不存在时返回默认模板视图（未落盘） |
 | | `get_config_mtime` | 返回配置文件 mtime，供前端轮询检测外部编辑器修改 |
 | | `open_config_in_editor` | 用系统默认程序打开配置文件 |
@@ -212,17 +213,18 @@ pub struct AppCore {
 6. 汇总 `RunSummary`（成功/跳过/失败计数、节省字节数），写入日志尾部的 JSON 块；若是调度触发，调用 `scheduler.mark_completed` 把下次运行时间推到明天同一时刻。
 7. 更新 `last_runs` 内存缓存（供一级页面卡片展示"上次运行结果"），并 `emit("dir-state-changed", ...)` 通知前端。
 
-### 4.3 定时调度器（`scheduler.rs`）
+### 4.3 定时调度后端
 
-- `DirSchedule { dir_path, enabled, next_run }`：每个目录一条排程记录。
-- 后台线程 `Scheduler::start` 每秒轮询一次：若 `now >= next_run` 且 `enabled`，触发回调（在 `main.rs` 中回调即调用 `AppCore::start_for_directory`）。
-- `compute_next_run(now, hour, minute)`：纯函数，计算今天该时刻的时间点；若已过去则推到明天，**同一天只会触发一次**。
-- `mark_completed`：触发后立刻把 `next_run` 加 24 小时——**严格不补跑**：即使程序离线超过一天重新启动，也只会从"当前时刻之后的下一个整点"开始算，不会连续触发多次补偿执行。
-- `refresh_schedule_table`（在 `app.rs`）在配置变更后重建整张排程表，从各目录配置里读取 `schedule.time` 字段解析 `HH:MM`。
+全局配置 `use_windows_task_scheduler` 控制后端选择，默认为 `false`：
+
+- **应用内调度**（`scheduler.rs`）：`DirSchedule { dir_path, enabled, next_run }` 为每个目录保存一条排程记录，`Scheduler::start` 每秒轮询一次；`compute_next_run` 计算当天或次日的目标时间，`mark_completed` 在触发后把下次运行推进 24 小时，因此严格不补跑。
+- **Windows 计划任务**（`windows_task_scheduler.rs`）：直接调用系统自带的 `schtasks.exe`，用 `/Create /SC DAILY /ST <HH:MM> /F` 创建或更新任务，用 `/Delete` 删除任务，不依赖第三方 CLI。每个目录对应一个 `AutoVideoCompressor-<安全目录名>` 任务，动作是当前 exe 加 `--run-once --directory <path>`。启用此后端时不启动应用内轮询，目录增删、启停和调度时间变化会同步对应任务。
+
+`refresh_schedule_table`（在 `app.rs`）始终根据各目录的 `schedule.time` 重建排程表，供界面展示下次运行时间；选择 Windows 计划任务时，该表不启动轮询。
 
 ### 4.4 配置系统（`config/`）
 
-**全局配置**（`global_config.rs`）— 扁平 JSON，路径 `%APPDATA%/AutoCompress/config.json`：
+**全局配置**（`global_config.rs`）— 扁平 JSON，路径 `%APPDATA%/AutoVideoCompressor/config.json`：
 
 ```json
 {
@@ -231,6 +233,7 @@ pub struct AppCore {
   "ffmpeg_timeout_seconds": 3600,
   "minimize_to_tray": true,
   "start_with_windows": false,
+  "use_windows_task_scheduler": false,
   "log_retention_days": 90,
   "templates": [
     { "name": "H.265 高质量", "params": "-c:v libx265 -crf 18 -preset slow -c:a aac -b:a 192k" },
@@ -302,7 +305,7 @@ pub struct AppCore {
 
 ### 4.8 工具函数（`util/`）
 
-- `fs_util.rs`：递归列文件、带重试的安全删除（应对 Windows 文件锁延迟释放，最多重试 5 次，间隔 120ms）、安全改名、查询磁盘剩余空间（`fs4`）、全局配置目录定位（`%APPDATA%/AutoCompress`，无该环境变量则退回 `%TEMP%`）。
+- `fs_util.rs`：递归列文件、带重试的安全删除（应对 Windows 文件锁延迟释放，最多重试 5 次，间隔 120ms）、安全改名、查询磁盘剩余空间（`fs4`）、全局配置目录定位（`%APPDATA%/AutoVideoCompressor`，无该环境变量则退回 `%TEMP%`）。
 - `string_util.rs`：`glob_to_regex`（glob→regex 字符转义规则）、`insert_temp_suffix`/`remove_temp_suffix`（在扩展名前插入/去除 `_tmp`）、`format_file_size`（B/KB/MB/GB/TB，一位小数）、ISO8601 本地时间格式化。
 
 ### 4.9 错误处理（`error.rs`）
@@ -390,7 +393,7 @@ index.html (#app)
 
 ### 6.4 `--run-once` 无窗口模式
 
-`main.rs` 在解析到命令行参数 `--run-once` 时，跳过整个 Tauri GUI 初始化，直接对所有已启用目录同步执行一次压缩后退出进程。这是为了配合 **Windows 任务计划程序**：可以注册一个定时任务在系统层面唤醒程序执行一次压缩，无需应用常驻内存（作为应用内置调度器的替代方案）。
+`main.rs` 在解析到命令行参数 `--run-once` 时，跳过整个 Tauri GUI 初始化；带 `--directory <path>` 时只处理指定目录，否则处理所有已启用目录，完成后退出。Windows 计划任务后端为每个目录注册独立任务，在系统层面唤醒程序，无需应用常驻内存。
 
 ---
 
@@ -400,8 +403,8 @@ index.html (#app)
 
 ```json
 {
-  "productName": "AutoCompress",
-  "identifier": "com.autocompress.app",
+  "productName": "AutoVideoCompressor",
+  "identifier": "com.autovideocompressor.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -409,7 +412,7 @@ index.html (#app)
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [{ "title": "AutoCompress", "width": 900, "height": 700, "decorations": false }]
+    "windows": [{ "title": "AutoVideoCompressor", "width": 900, "height": 700, "decorations": false }]
   },
   "bundle": { "active": true, "targets": "all", "icon": [...] }
 }
@@ -430,7 +433,7 @@ index.html (#app)
 
 ### 7.4 `src-tauri/Cargo.toml`
 
-`[lib] name = "autocompress_lib"` 与 `[[bin]] name = "autocompress"` 分离——业务逻辑编译为库（`lib.rs` 导出所有模块），`main.rs` 只是薄的可执行入口，这样 Rust 单元测试（`#[cfg(test)]` 分散在各模块文件内）可以直接对库做白盒测试，无需启动完整 Tauri 应用。
+`[lib] name = "autovideocompressor_lib"` 与 `[[bin]] name = "autovideocompressor"` 分离——业务逻辑编译为库（`lib.rs` 导出所有模块），`main.rs` 只是薄的可执行入口，这样 Rust 单元测试（`#[cfg(test)]` 分散在各模块文件内）可以直接对库做白盒测试，无需启动完整 Tauri 应用。
 
 ---
 
@@ -454,7 +457,7 @@ cd src-tauri && cargo test
 ```
 
 产物位置：
-- 便携版：`src-tauri/target/release/AutoCompress_<version>.exe`（由 `scripts/rename-exe.cjs` 从 `autocompress.exe` 复制重命名而来）
+- 便携版：`src-tauri/target/release/AutoVideoCompressor_<version>.exe`（由 `scripts/rename-exe.cjs` 从 `autovideocompressor.exe` 复制重命名而来）
 - NSIS 安装包：`src-tauri/target/release/bundle/nsis/`
 - MSI 安装包：`src-tauri/target/release/bundle/msi/`
 

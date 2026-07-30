@@ -1,6 +1,6 @@
 {
   "identifier": "default",
-  "description": "Default capability for AutoCompress",
+  "description": "Default capability for AutoVideoCompressor",
   "windows": ["main"],
   "permissions": [
     "core:default",

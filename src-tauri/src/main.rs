@@ -1,7 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use app::AppCore;
-use autovideocompressor_lib::{app, commands, logger, schedule_center};
+use autovideocompressor_lib::{app, commands, logger, windows_task_scheduler};
 use autovideocompressor_lib::config::directory_config::DirectoryConfig;
 use fs4::FileExt;
 use std::fs::{File, OpenOptions};
@@ -56,19 +56,19 @@ fn request_compression(dir: &str) -> Result<(), String> {
 // 目录有效性检查 & 清理
 // ======================================================================
 
-/// 验证目录是否有效。如果无效则清理对应的 ScheduleCenter 计划任务，
+/// 验证目录是否有效。如果无效则清理对应的 Windows 计划任务，
 /// 返回 true 表示可以继续压缩。
 fn validate_and_run_or_cleanup(core: &Arc<AppCore>, dir: &str) -> bool {
     // 1. 目录是否在磁盘上存在
     if !std::path::Path::new(dir).exists() {
-        eprintln!("[main] 目录 '{dir}' 不存在，清理 ScheduleCenter 任务");
+        eprintln!("[main] 目录 '{dir}' 不存在，清理 Windows 计划任务");
         cleanup_schedule_task(dir);
         return false;
     }
     // 2. 配置文件是否有效
     let cfg = DirectoryConfig::load(dir);
     if !cfg.valid {
-        eprintln!("[main] 目录 '{dir}' 配置无效，清理 ScheduleCenter 任务");
+        eprintln!("[main] 目录 '{dir}' 配置无效，清理 Windows 计划任务");
         cleanup_schedule_task(dir);
         return false;
     }
@@ -77,11 +77,11 @@ fn validate_and_run_or_cleanup(core: &Arc<AppCore>, dir: &str) -> bool {
     true
 }
 
-/// 安全清理 ScheduleCenter 任务（任务不存在时自动忽略）。
+/// 安全清理 Windows 计划任务（任务不存在时自动忽略）。
 fn cleanup_schedule_task(dir: &str) {
-    match schedule_center::ScheduleCenter::new().remove_task(dir) {
-        Ok(()) => eprintln!("[main] 已清理 ScheduleCenter 任务: {dir}"),
-        Err(e) => eprintln!("[main] 清理 ScheduleCenter 任务失败: {e}"),
+    match windows_task_scheduler::WindowsTaskScheduler::new().remove_task(dir) {
+        Ok(()) => eprintln!("[main] 已清理 Windows 计划任务: {dir}"),
+        Err(e) => eprintln!("[main] 清理 Windows 计划任务失败: {e}"),
     }
 }
 
@@ -153,7 +153,7 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let core = AppCore::new();
 
-    // --run-once [--directory <path>]: headless 单次压缩（ScheduleCenter 触发）。
+    // --run-once [--directory <path>]: headless 单次压缩（Windows 计划任务触发）。
     if args.iter().any(|a| a == "--run-once") {
         handle_run_once(&core, &args);
         return;
@@ -210,16 +210,20 @@ fn main() {
             // 启动 IPC 监控（始终运行，接收 --run-once 的请求）。
             core_for_setup.start_pending_jobs_monitor();
 
-            // 调度后端选择：schedulecenter 或 inprocess（默认）。
-            let use_sc = core_for_setup.config.lock().unwrap().use_schedule_center;
-            if use_sc {
-                // ScheduleCenter 模式：将目录级调度同步为 Windows 计划任务，
+            // 调度后端选择：Windows 计划任务或 inprocess（默认）。
+            let use_task_scheduler = core_for_setup
+                .config
+                .lock()
+                .unwrap()
+                .use_windows_task_scheduler;
+            if use_task_scheduler {
+                // 将目录级调度同步为 Windows 计划任务，
                 // 由 Windows Task Scheduler 在预定时间触发 exe --run-once --directory <path>。
                 // 应用本身不启动轮询调度器，避免双重触发。
-                eprintln!("[main] 使用 ScheduleCenter 调度后端");
-                let sc = schedule_center::ScheduleCenter::new();
+                eprintln!("[main] 使用 Windows 计划任务调度后端");
+                let task_scheduler = windows_task_scheduler::WindowsTaskScheduler::new();
                 let dirs = core_for_setup.config.lock().unwrap().directories.clone();
-                sc.sync_all(&dirs);
+                task_scheduler.sync_all(&dirs);
                 core_for_setup.refresh_schedule_table();
             } else {
                 // 默认 inprocess 模式：应用内轮询调度。

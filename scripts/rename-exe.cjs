@@ -7,7 +7,7 @@ const path = require("path");
 const pkg = require("../package.json");
 const tauriConf = require("../src-tauri/tauri.conf.json");
 const version = tauriConf.version || pkg.version;
-const product = tauriConf.productName || "AutoCompress";
+const product = tauriConf.productName || "AutoVideoCompressor";
 
 const releaseDir = path.join(__dirname, "..", "src-tauri", "target", "release");
 const src = path.join(releaseDir, "autovideocompressor.exe");

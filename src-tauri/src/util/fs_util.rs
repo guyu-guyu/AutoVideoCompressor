@@ -82,15 +82,15 @@ pub fn has_enough_space(path: &Path, needed: u64) -> bool {
     }
 }
 
-/// Global config/log base dir: %APPDATA%/AutoCompress, fallback %TEMP%.
+/// Global config/log base dir: %APPDATA%/AutoVideoCompressor, fallback %TEMP%.
 pub fn config_base_dir() -> PathBuf {
     if let Ok(appdata) = std::env::var("APPDATA") {
-        let d = PathBuf::from(appdata).join("AutoCompress");
+        let d = PathBuf::from(appdata).join("AutoVideoCompressor");
         let _ = std::fs::create_dir_all(&d);
         return d;
     }
     let tmp = std::env::var("TEMP").unwrap_or_else(|_| "C:\\Temp".into());
-    let d = PathBuf::from(tmp).join("AutoCompress");
+    let d = PathBuf::from(tmp).join("AutoVideoCompressor");
     let _ = std::fs::create_dir_all(&d);
     d
 }
