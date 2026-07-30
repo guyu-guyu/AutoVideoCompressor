@@ -1,0 +1,39 @@
+README.md
+  s_c1c7b45ec0ca9f::t_407067f57c9a12 12,23,129-131,134-136
+docs/PROJECT.md
+  s_c1c7b45ec0ca9f::t_fb8cc748415e18 221,394,396-397
+src-tauri/src/app.rs
+  s_c1c7b45ec0ca9f::t_0048de55da7f44 11,13,17,38-39,90-91,99-148,264,504,537-538,545-572,575
+src-tauri/src/commands.rs
+  s_c1c7b45ec0ca9f::t_eb3fdebf835e9b 13-17
+src-tauri/src/main.rs
+  s_c1c7b45ec0ca9f::t_203964571fac4e 36,39,49,51-52,54-55,120-121,128,150-166,176-183,188-191,209,232,243
+src-tauri/src/windows_task_scheduler.rs
+  s_c1c7b45ec0ca9f::t_5ab1b0febefaf9 4-5,40,43,51-58,241-251
+src/AppShell.vue
+  s_c1c7b45ec0ca9f::t_149cfaa5ec27d8 3,42-51
+src/api/tauri.ts
+  s_c1c7b45ec0ca9f::t_aa1a3853e6046d 20,52-53
+src/components/DirCard.vue
+  s_c1c7b45ec0ca9f::t_4ea78a13b8f95e 20-23,110
+src/stores/app.ts
+  s_c1c7b45ec0ca9f::t_38cc745ed1cd38 12,59-65,69
+src/views/DirectoryDetail.vue
+  s_c1c7b45ec0ca9f::t_a9ce20b34800a8 16,18,52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.18",
+  "base_commit_sha": "4fdd8903a8d18338b5ea3b22c2cf6e8128c3dccc",
+  "prompts": {},
+  "sessions": {
+    "s_c1c7b45ec0ca9f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb21d-4e98-7170-b032-279a1a24037b",
+        "model": "unknown"
+      },
+      "human_author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
