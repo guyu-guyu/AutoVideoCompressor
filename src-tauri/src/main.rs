@@ -33,10 +33,10 @@ fn try_acquire_singleton() -> Option<File> {
 }
 
 // ======================================================================
-// IPC：向主实例写入压缩请求（--run-once 竞争锁失败时使用）
+// IPC：向已运行的 GUI 实例写入计划压缩请求
 // ======================================================================
 
-/// 向主实例写入一条压缩请求，写完后立即退出。
+/// 向主实例写入一条计划压缩请求，写完后立即退出。
 fn request_compression(dir: &str) -> Result<(), String> {
     let path = autovideocompressor_lib::util::fs_util::config_base_dir().join("pending");
     std::fs::create_dir_all(&path)
@@ -46,9 +46,13 @@ fn request_compression(dir: &str) -> Result<(), String> {
         .unwrap_or_default()
         .as_nanos();
     let filename = format!("{ts}.pending");
+    let temp_filename = format!("{ts}.pending.tmp");
     let content = serde_json::json!({"dir": dir}).to_string();
-    std::fs::write(path.join(filename), &content)
+    let temp_path = path.join(temp_filename);
+    std::fs::write(&temp_path, &content)
         .map_err(|e| format!("无法写入 IPC 请求: {e}"))?;
+    std::fs::rename(&temp_path, path.join(filename))
+        .map_err(|e| format!("无法提交 IPC 请求: {e}"))?;
     Ok(())
 }
 
@@ -107,31 +111,21 @@ fn run_once(core: &Arc<AppCore>, dir_filter: Option<&str>) {
     }
 }
 
-/// 处理所有待处理的 IPC 请求（--run-once 竞争锁失败时留下的 .pending 文件）。
-/// 此函数在 headless（非 UI）环境下使用 execute_for_directory 同步执行。
-fn process_pending_jobs_headless(core: &Arc<AppCore>) {
-    let dirs = AppCore::collect_pending_requests();
-    for dir in dirs {
-        validate_and_run_or_cleanup(core, &dir);
-    }
-}
-
 // ======================================================================
 // --run-once 入口
 // ======================================================================
 
 /// --run-once [--directory <path>] 处理流程：
 ///   1. 尝试获取单例锁
-///   2. 获取成功 → 处理遗留 IPC + 执行压缩 → 退出
-///   3. 获取失败 → 写 IPC 请求 → 退出（由主实例接管）
+///   2. 获取成功 → 执行本次压缩 → 退出
+///   3. 获取失败 → 将指定目录交给 GUI 主实例 → 退出
 fn handle_run_once(core: &Arc<AppCore>, args: &[String]) {
     let dir_filter = args.windows(2)
         .find(|w| w[0] == "--directory")
         .map(|w| w[1].as_str());
 
     if let Some(_lock) = try_acquire_singleton() {
-        // 我们是唯一实例，处理遗留 IPC 请求后执行本次压缩
-        process_pending_jobs_headless(core);
+        // Headless 模式只执行本次命令指定的范围，不处理计划任务队列。
         run_once(core, dir_filter);
     } else {
         // 主实例正在运行，通过 IPC 委托
@@ -153,7 +147,23 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let core = AppCore::new();
 
-    // --run-once [--directory <path>]: headless 单次压缩（Windows 计划任务触发）。
+    let scheduled_dir = if args.iter().any(|arg| arg == "--scheduled") {
+        match args
+            .windows(2)
+            .find(|pair| pair[0] == "--directory")
+            .map(|pair| pair[1].clone())
+        {
+            Some(dir) if !dir.trim().is_empty() => Some(dir),
+            _ => {
+                eprintln!("[main] --scheduled 必须指定 --directory <path>");
+                return;
+            }
+        }
+    } else {
+        None
+    };
+
+    // --run-once [--directory <path>]: 手动 headless 单次压缩。
     if args.iter().any(|a| a == "--run-once") {
         handle_run_once(&core, &args);
         return;
@@ -163,10 +173,21 @@ fn main() {
     let _singleton = match try_acquire_singleton() {
         Some(l) => l,
         None => {
-            eprintln!("[main] 已有实例正在运行，退出");
+            if let Some(dir) = scheduled_dir {
+                eprintln!("[main] GUI 实例正在运行，提交计划压缩请求: {dir}");
+                if let Err(error) = request_compression(&dir) {
+                    eprintln!("[main] 计划压缩请求失败: {error}");
+                }
+            } else {
+                eprintln!("[main] 已有实例正在运行，退出");
+            }
             return;
         }
     };
+
+    if let Some(dir) = scheduled_dir {
+        core.queue_scheduled_directory(dir);
+    }
 
     // Startup: per-directory log cleanup using global retention.
     {
@@ -185,6 +206,7 @@ fn main() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
         .manage(Arc::clone(&core))
         .invoke_handler(tauri::generate_handler![
+            commands::frontend_ready,
             commands::list_directories,
             commands::get_global_config,
             commands::save_global_config,
@@ -207,7 +229,7 @@ fn main() {
             let handle = app.handle().clone();
             core_for_setup.set_app_handle(handle.clone());
 
-            // 启动 IPC 监控（始终运行，接收 --run-once 的请求）。
+            // 启动 IPC 监控（接收其他计划任务进程提交的目录请求）。
             core_for_setup.start_pending_jobs_monitor();
 
             // 调度后端选择：Windows 计划任务或 inprocess（默认）。
@@ -218,7 +240,7 @@ fn main() {
                 .use_windows_task_scheduler;
             if use_task_scheduler {
                 // 将目录级调度同步为 Windows 计划任务，
-                // 由 Windows Task Scheduler 在预定时间触发 exe --run-once --directory <path>。
+                // 由 Windows Task Scheduler 触发 exe --scheduled --directory <path>。
                 // 应用本身不启动轮询调度器，避免双重触发。
                 eprintln!("[main] 使用 Windows 计划任务调度后端");
                 let task_scheduler = windows_task_scheduler::WindowsTaskScheduler::new();

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // AppShell 是 provider 的后代组件，这里才能正确 inject 出 dialog/message。
-import { onMounted, ref } from "vue";
+import { onMounted, ref, watch } from "vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { NModal, useDialog, useMessage } from "naive-ui";
 import { useAppStore } from "./stores/app";
@@ -39,6 +39,16 @@ function openDir(path: string) {
     selectedDir.value = path;
     page.value = "detail";
 }
+
+watch(
+    () => store.scheduledRequest,
+    (request) => {
+        if (!request.dirPath) return;
+        showSettings.value = false;
+        openDir(request.dirPath);
+    },
+);
+
 function back() {
     page.value = "list";
     store.refreshCards();

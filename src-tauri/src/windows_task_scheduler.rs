@@ -1,8 +1,8 @@
 //! Windows Task Scheduler backend implemented with the built-in `schtasks.exe`.
 //!
 //! Each configured directory maps to one daily task. The task starts this
-//! executable with `--run-once --directory <path>`, so schedules continue to
-//! work after the desktop application exits.
+//! executable with `--scheduled --directory <path>`, so the GUI opens for the
+//! requested directory even after the desktop application exits.
 
 use crate::config::directory_config::DirectoryConfig;
 use crate::config::global_config::DirEntry;
@@ -37,19 +37,23 @@ impl WindowsTaskScheduler {
         validate_time(time)?;
 
         let name = Self::task_name(dir);
-        let action = format!(
-            "{} --run-once --directory {}",
-            quote_windows_arg(&self.app_exe.to_string_lossy()),
-            quote_windows_arg(dir),
-        );
+        let action = self.scheduled_action(dir);
         let output = Command::new("schtasks.exe")
             .args([
-                "/Create", "/TN", &name, "/TR", &action, "/SC", "DAILY", "/ST", time, "/F",
+                "/Create", "/TN", &name, "/TR", &action, "/SC", "DAILY", "/ST", time, "/IT", "/F",
             ])
             .output()
             .map_err(|e| format!("无法启动 Windows 计划任务工具 schtasks.exe: {e}"))?;
 
         command_result("创建 Windows 计划任务", output)
+    }
+
+    fn scheduled_action(&self, dir: &str) -> String {
+        format!(
+            "{} --scheduled --directory {}",
+            quote_windows_arg(&self.app_exe.to_string_lossy()),
+            quote_windows_arg(dir),
+        )
     }
 
     /// Removes the task for a directory. Missing tasks are treated as success.
@@ -233,5 +237,16 @@ mod tests {
         );
         assert_eq!(quote_windows_arg(r"D:\Videos"), r"D:\Videos");
         assert_eq!(quote_windows_arg(""), r#""""#);
+    }
+
+    #[test]
+    fn scheduled_action_targets_exactly_one_directory() {
+        let scheduler = WindowsTaskScheduler {
+            app_exe: PathBuf::from(r"C:\Program Files\AutoVideoCompressor.exe"),
+        };
+        assert_eq!(
+            scheduler.scheduled_action(r"D:\My Videos"),
+            r#""C:\Program Files\AutoVideoCompressor.exe" --scheduled --directory "D:\My Videos""#
+        );
     }
 }

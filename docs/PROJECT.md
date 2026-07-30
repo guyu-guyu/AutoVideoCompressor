@@ -218,7 +218,7 @@ pub struct AppCore {
 全局配置 `use_windows_task_scheduler` 控制后端选择，默认为 `false`：
 
 - **应用内调度**（`scheduler.rs`）：`DirSchedule { dir_path, enabled, next_run }` 为每个目录保存一条排程记录，`Scheduler::start` 每秒轮询一次；`compute_next_run` 计算当天或次日的目标时间，`mark_completed` 在触发后把下次运行推进 24 小时，因此严格不补跑。
-- **Windows 计划任务**（`windows_task_scheduler.rs`）：直接调用系统自带的 `schtasks.exe`，用 `/Create /SC DAILY /ST <HH:MM> /F` 创建或更新任务，用 `/Delete` 删除任务，不依赖第三方 CLI。每个目录对应一个 `AutoVideoCompressor-<安全目录名>` 任务，动作是当前 exe 加 `--run-once --directory <path>`。启用此后端时不启动应用内轮询，目录增删、启停和调度时间变化会同步对应任务。
+- **Windows 计划任务**（`windows_task_scheduler.rs`）：直接调用系统自带的 `schtasks.exe`，用 `/Create /SC DAILY /ST <HH:MM> /IT /F` 创建或更新交互式任务，用 `/Delete` 删除任务，不依赖第三方 CLI。每个目录对应一个 `AutoVideoCompressor-<安全目录名>` 任务，动作是当前 exe 加 `--scheduled --directory <path>`。该模式在用户已登录时启动或唤醒 GUI，只把指定目录加入串行队列；前端完成事件监听后才开始压缩，并自动进入对应目录显示进度和停止按钮。目录增删、启停和调度时间变化会同步对应任务。
 
 `refresh_schedule_table`（在 `app.rs`）始终根据各目录的 `schedule.time` 重建排程表，供界面展示下次运行时间；选择 Windows 计划任务时，该表不启动轮询。
 
@@ -391,9 +391,10 @@ index.html (#app)
 
 `tauri_plugin_autostart` 注册 Windows 启动项，由全局配置 `start_with_windows` 字段控制（保存全局配置时同步调用插件 API，具体开关逻辑封装在插件内部）。
 
-### 6.4 `--run-once` 无窗口模式
+### 6.4 命令行启动模式
 
-`main.rs` 在解析到命令行参数 `--run-once` 时，跳过整个 Tauri GUI 初始化；带 `--directory <path>` 时只处理指定目录，否则处理所有已启用目录，完成后退出。Windows 计划任务后端为每个目录注册独立任务，在系统层面唤醒程序，无需应用常驻内存。
+- `--run-once [--directory <path>]`：手动 headless 模式，跳过 Tauri GUI；指定目录时只处理该目录，否则处理所有已启用目录，完成后退出。
+- `--scheduled --directory <path>`：Windows 计划任务专用模式，必须指定且只排队该目录。若应用未运行则正常初始化 GUI；若已有实例则通过 pending IPC 提交目录请求，已有窗口会显示并获得焦点。请求在前端注册完状态/进度监听后启动，因此可查看逐文件进度并通过现有停止命令中断。
 
 ---
 

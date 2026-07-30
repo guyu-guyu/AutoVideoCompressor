@@ -17,7 +17,10 @@ const badgeType: Record<string, "success" | "info" | "warning" | "error"> = {
     overlap: "warning",
 };
 
-const isRunning = () => store.runtime[props.card.path]?.stage === "compressing";
+const isRunning = () => {
+    const stage = store.runtime[props.card.path]?.stage;
+    return stage === "scanning" || stage === "compressing";
+};
 const runningStatus = () =>
     store.runtime[props.card.path]?.statusText || "压缩中…";
 const runningProgress = () => {
@@ -104,7 +107,7 @@ async function removeIt(e: Event) {
                     <span>📁 {{ card.path }}</span>
                 </n-ellipsis>
                 <n-tag v-if="isRunning()" type="info" :bordered="false" round
-                    >🔄 压缩中 {{ runningProgress() }}</n-tag
+                    >{{ runningStatus() }} {{ runningProgress() }}</n-tag
                 >
                 <n-tag v-else :type="badgeType[card.badge]" :bordered="false">
                     {{

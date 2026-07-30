@@ -8,11 +8,13 @@ use crate::scheduler::{compute_next_run, DirSchedule, Scheduler};
 use crate::types::*;
 use crate::util::fs_util::{config_base_dir, has_enough_space, safe_delete_retry};
 use crate::util::string_util::format_file_size;
+use crate::windows_task_scheduler::WindowsTaskScheduler;
 use chrono::{Datelike, Local, Timelike};
+use std::collections::VecDeque;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 /// IPC pending jobs directory path.
 fn pending_jobs_dir() -> std::path::PathBuf {
@@ -33,6 +35,8 @@ pub struct AppCore {
     pub ffmpeg_status: Mutex<FfmpegStatus>,
     pub last_runs: Mutex<std::collections::HashMap<String, (String, String)>>,
     pub app_handle: Mutex<Option<AppHandle>>,
+    frontend_ready: AtomicBool,
+    scheduled_queue: Mutex<VecDeque<String>>,
 }
 
 /// Compute the status badge for a directory. Pure given (dir, overlap flag).
@@ -83,11 +87,63 @@ impl AppCore {
             ffmpeg_status: Mutex::new(FfmpegStatus::default()),
             last_runs: Mutex::new(std::collections::HashMap::new()),
             app_handle: Mutex::new(None),
+            frontend_ready: AtomicBool::new(false),
+            scheduled_queue: Mutex::new(VecDeque::new()),
         })
     }
 
     pub fn set_app_handle(&self, handle: AppHandle) {
         *self.app_handle.lock().unwrap() = Some(handle);
+    }
+
+    /// Queues one directory requested by Windows Task Scheduler.
+    pub fn queue_scheduled_directory(&self, dir: String) {
+        if dir.trim().is_empty() {
+            return;
+        }
+        let inserted = {
+            let mut queue = self.scheduled_queue.lock().unwrap();
+            if queue.iter().any(|queued| queued == &dir) {
+                false
+            } else {
+                queue.push_back(dir.clone());
+                true
+            }
+        };
+        if inserted && self.frontend_ready.load(Ordering::SeqCst) {
+            self.show_main_window();
+            if !self.compressor_running.load(Ordering::SeqCst) {
+                self.emit("scheduled-compression-requested", dir);
+            }
+        }
+    }
+
+    /// Opens the queued directory only after the frontend has registered all
+    /// progress listeners. The monitor is gated by the same flag.
+    pub fn mark_frontend_ready(&self) {
+        let next_dir = {
+            let queue = self.scheduled_queue.lock().unwrap();
+            self.frontend_ready.store(true, Ordering::SeqCst);
+            queue.front().cloned()
+        };
+        if let Some(dir) = next_dir {
+            self.present_scheduled_directory(&dir);
+        }
+    }
+
+    fn present_scheduled_directory(&self, dir: &str) {
+        self.show_main_window();
+        self.emit("scheduled-compression-requested", dir.to_string());
+    }
+
+    fn show_main_window(&self) {
+        if let Some(handle) = self.app_handle.lock().unwrap().as_ref() {
+            if let Some(window) = handle.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }
     }
 
     fn emit<S: serde::Serialize + Clone>(&self, event: &str, payload: S) {
@@ -205,6 +261,7 @@ impl AppCore {
         }
         // Reset cancel flag for this run
         self.cancel_flag.store(false, Ordering::SeqCst);
+        self.emit_dir_state(&dir, Stage::Scanning, "扫描中");
         let me = Arc::clone(self);
         std::thread::spawn(move || {
             me.execute_for_directory(&dir, advance);
@@ -444,7 +501,7 @@ impl AppCore {
     }
 
     // ------------------------------------------------------------------
-    // IPC: 接收 --run-once 委托的压缩请求
+    // IPC: 接收 Windows 计划任务委托的压缩请求
     // ------------------------------------------------------------------
 
     /// 收集并清理 IPC 请求文件，返回请求压缩的目录列表。
@@ -477,20 +534,45 @@ impl AppCore {
         result
     }
 
-    /// 启动后台线程，定期检查并处理 IPC 请求。
+    /// 启动后台线程，收集 IPC 请求并按目录串行执行。任务只有在前端
+    /// 完成事件监听注册后才会启动，因此首次进度事件不会丢失。
     pub fn start_pending_jobs_monitor(self: &Arc<Self>) {
         let me = Arc::clone(self);
         std::thread::spawn(move || {
             loop {
                 let dirs = AppCore::collect_pending_requests();
                 for dir in dirs {
-                    if me.cancel_flag.load(Ordering::SeqCst) {
-                        // 正在停止，跳过本次请求
-                        continue;
-                    }
-                    let _ = me.start_for_directory(dir, true);
+                    me.queue_scheduled_directory(dir);
                 }
-                std::thread::sleep(std::time::Duration::from_secs(2));
+
+                if me.frontend_ready.load(Ordering::SeqCst)
+                    && !me.compressor_running.load(Ordering::SeqCst)
+                {
+                    let next_dir = me.scheduled_queue.lock().unwrap().pop_front();
+                    if let Some(dir) = next_dir {
+                        // A queued request may have waited behind another job.
+                        // Re-open its detail view when it actually starts.
+                        me.present_scheduled_directory(&dir);
+                        let config = DirectoryConfig::load(&dir);
+                        let enabled = me
+                            .config
+                            .lock()
+                            .unwrap()
+                            .directories
+                            .iter()
+                            .any(|entry| entry.path == dir && entry.enabled);
+                        if !Path::new(&dir).exists() || !config.valid || !enabled {
+                            eprintln!(
+                                "[scheduled] 目录不存在、未启用或配置无效，删除计划任务: {dir}"
+                            );
+                            let _ = WindowsTaskScheduler::new().remove_task(&dir);
+                        } else if !me.start_for_directory(dir.clone(), false) {
+                            // A manual compression won the race after the idle check.
+                            me.scheduled_queue.lock().unwrap().push_front(dir);
+                        }
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_millis(200));
             }
         });
     }

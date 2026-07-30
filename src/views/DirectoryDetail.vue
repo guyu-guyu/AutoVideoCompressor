@@ -13,8 +13,9 @@ const store = useAppStore();
 const tab = ref<"preview" | "config" | "history">("preview");
 
 const card = computed(() => store.cards.find((c) => c.path === props.dirPath));
+const currentStage = computed(() => store.runtime[props.dirPath]?.stage);
 const isRunning = computed(
-    () => store.runtime[props.dirPath]?.stage === "compressing",
+    () => currentStage.value === "scanning" || currentStage.value === "compressing",
 );
 
 async function compressNow() {
@@ -48,7 +49,7 @@ async function stopIt() {
                     <span>📁 {{ dirPath }}</span>
                 </n-ellipsis>
                 <n-tag v-if="isRunning" type="info" :bordered="false" round
-                    >🔄 压缩中</n-tag
+                    >{{ currentStage === "scanning" ? "🔍 扫描中" : "🔄 压缩中" }}</n-tag
                 >
                 <n-button
                     v-if="isRunning"

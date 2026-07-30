@@ -11,6 +11,11 @@ use tauri::State;
 type Core<'a> = State<'a, Arc<AppCore>>;
 
 #[tauri::command]
+pub fn frontend_ready(core: Core) {
+    core.mark_frontend_ready();
+}
+
+#[tauri::command]
 pub fn list_directories(core: Core) -> Vec<DirCardInfo> {
     core.build_card_infos()
 }

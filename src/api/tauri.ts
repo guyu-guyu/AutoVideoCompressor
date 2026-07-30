@@ -17,6 +17,7 @@ async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> 
 }
 
 export const api = {
+  frontendReady: () => call<void>("frontend_ready"),
   listDirectories: () => call<DirCardInfo[]>("list_directories"),
   getGlobalConfig: () => call<GlobalConfig>("get_global_config"),
   saveGlobalConfig: (config: GlobalConfig) => call<void>("save_global_config", { config }),
@@ -48,4 +49,6 @@ export const events = {
     listen<FfmpegStatus>("ffmpeg-status-changed", (e) => cb(e.payload)),
   onCloseWhileCompressing: (cb: () => void): Promise<UnlistenFn> =>
     listen("close-requested-while-compressing", () => cb()),
+  onScheduledCompressionRequested: (cb: (dirPath: string) => void): Promise<UnlistenFn> =>
+    listen<string>("scheduled-compression-requested", (e) => cb(e.payload)),
 };

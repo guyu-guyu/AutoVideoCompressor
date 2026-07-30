@@ -9,6 +9,7 @@ export const useAppStore = defineStore("app", () => {
   const runtime = ref<Record<string, DirRuntimeState>>({});
   const progress = ref<Record<string, CompressProgress>>({});
   const compressingWhileClose = ref(false);
+  const scheduledRequest = ref({ id: 0, dirPath: "" });
 
   async function refreshCards() {
     try {
@@ -55,9 +56,16 @@ export const useAppStore = defineStore("app", () => {
       await events.onCloseWhileCompressing(() => { compressingWhileClose.value = true; });
       console.log("[store] 已注册 close-requested-while-compressing 监听");
     } catch (e) { console.error("[store] 注册 onCloseWhileCompressing 失败:", e); }
+    try {
+      await events.onScheduledCompressionRequested((dirPath) => {
+        scheduledRequest.value = { id: scheduledRequest.value.id + 1, dirPath };
+      });
+      console.log("[store] 已注册 scheduled-compression-requested 监听");
+    } catch (e) { console.error("[store] 注册计划任务导航监听失败:", e); }
+    await api.frontendReady();
     console.log("[store] init 完成");
   }
 
-  return { cards, ffmpeg, runtime, progress, compressingWhileClose,
+  return { cards, ffmpeg, runtime, progress, compressingWhileClose, scheduledRequest,
            refreshCards, refreshFfmpeg, init };
 });
