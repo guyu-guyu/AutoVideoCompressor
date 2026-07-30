@@ -1,0 +1,19 @@
+docs/PROJECT.md
+  s_c1c7b45ec0ca9f::t_931d354aa4e982 469-485
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.18",
+  "base_commit_sha": "764c6d7b170e933994b1b6e97d0eeea40297624e",
+  "prompts": {},
+  "sessions": {
+    "s_c1c7b45ec0ca9f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb21d-4e98-7170-b032-279a1a24037b",
+        "model": "unknown"
+      },
+      "human_author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
