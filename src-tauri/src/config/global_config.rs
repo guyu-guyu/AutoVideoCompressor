@@ -21,6 +21,8 @@ pub struct GlobalConfig {
     pub templates: Vec<(String, String)>,
     /// 调度后端：true = Windows 计划任务，false = 应用内轮询（默认）。
     pub use_windows_task_scheduler: bool,
+    /// Windows 计划任务触发时是否唤醒处于睡眠状态的计算机。
+    pub wake_computer_for_scheduled_tasks: bool,
 }
 
 fn normalize(p: &str) -> String {
@@ -53,6 +55,7 @@ impl GlobalConfig {
                 ("H.264 快速".into(), "-c:v libx264 -crf 28 -preset fast -c:a aac -b:a 128k".into()),
             ],
             use_windows_task_scheduler: false,
+            wake_computer_for_scheduled_tasks: false,
         }
     }
 
@@ -100,6 +103,10 @@ impl GlobalConfig {
             .or_else(|| j.get("use_schedule_center"))
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
+        c.wake_computer_for_scheduled_tasks = j
+            .get("wake_computer_for_scheduled_tasks")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
 
         if let Some(Value::Array(arr)) = j.get("templates") {
             c.templates.clear();
@@ -136,6 +143,10 @@ impl GlobalConfig {
         j.insert(
             "use_windows_task_scheduler".into(),
             Value::from(self.use_windows_task_scheduler),
+        );
+        j.insert(
+            "wake_computer_for_scheduled_tasks".into(),
+            Value::from(self.wake_computer_for_scheduled_tasks),
         );
         let tmpls: Vec<Value> = self.templates.iter().map(|(n, p)| {
             let mut m = serde_json::Map::new();
@@ -223,10 +234,12 @@ mod tests {
         let path = tmp.path().join("config.json");
         let mut c = GlobalConfig::new_defaults();
         c.ffmpeg_path = "C:/ffmpeg.exe".into();
+        c.wake_computer_for_scheduled_tasks = true;
         c.add_directory("D:/Videos");
         assert!(c.save_to(&path));
         let loaded = GlobalConfig::load_from(&path).unwrap();
         assert_eq!(loaded.ffmpeg_path, "C:/ffmpeg.exe");
+        assert!(loaded.wake_computer_for_scheduled_tasks);
         assert_eq!(loaded.directories.len(), 1);
         assert_eq!(loaded.templates.len(), 3);
     }
@@ -238,5 +251,6 @@ mod tests {
         assert_eq!(c.templates[0].0, "H.265 高质量");
         assert_eq!(c.ffmpeg_timeout_seconds, 3600);
         assert_eq!(c.log_retention_days, 90);
+        assert!(!c.wake_computer_for_scheduled_tasks);
     }
 }

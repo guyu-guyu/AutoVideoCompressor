@@ -86,7 +86,7 @@ webviewApp/
 │       ├── error.rs                      # AppError / AppResult
 │       ├── scanner.rs                     # 文件扫描 + 批次计算(compute_next_run_set)
 │       ├── scheduler.rs                    # 定时调度器（严格不补跑）
-│       ├── windows_task_scheduler.rs        # 直接调用 schtasks.exe 管理 Windows 计划任务
+│       ├── windows_task_scheduler.rs        # 通过 Task Scheduler COM API 管理 Windows 计划任务
 │       ├── logger.rs                        # 运行日志读写（人类可读 + JSON 块）
 │       ├── config/
 │       │   ├── global_config.rs               # 全局配置（%APPDATA%/AutoVideoCompressor/config.json）
@@ -218,7 +218,9 @@ pub struct AppCore {
 全局配置 `use_windows_task_scheduler` 控制后端选择，默认为 `false`：
 
 - **应用内调度**（`scheduler.rs`）：`DirSchedule { dir_path, enabled, next_run }` 为每个目录保存一条排程记录，`Scheduler::start` 每秒轮询一次；`compute_next_run` 计算当天或次日的目标时间，`mark_completed` 在触发后把下次运行推进 24 小时，因此严格不补跑。
-- **Windows 计划任务**（`windows_task_scheduler.rs`）：直接调用系统自带的 `schtasks.exe`，用 `/Create /SC DAILY /ST <HH:MM> /IT /F` 创建或更新交互式任务，用 `/Delete` 删除任务，不依赖第三方 CLI。每个目录对应一个 `AutoVideoCompressor-<安全目录名>` 任务，动作是当前 exe 加 `--scheduled --directory <path>`。该模式在用户已登录时启动或唤醒 GUI，只把指定目录加入串行队列；前端完成事件监听后才开始压缩，并自动进入对应目录显示进度和停止按钮。目录增删、启停和调度时间变化会同步对应任务。
+- **Windows 计划任务**（`windows_task_scheduler.rs`）：通过 Windows Task Scheduler COM API 创建、更新、运行和删除任务，不依赖第三方 CLI。每个目录对应 `\AutoVideoCompressor\<安全目录名>` 任务，动作是当前 exe 加 `--scheduled --directory <path>`；旧版本遗留在根目录的 `AutoVideoCompressor-<安全目录名>` 任务会在新任务成功注册后删除。任务以交互式登录令牌运行，并显式关闭 `StartWhenAvailable`，错过计划时间后不会补跑；在用户已登录时，任务会启动或唤醒 GUI，只把指定目录加入串行队列。前端完成事件监听后才开始压缩，并自动进入对应目录显示进度和停止按钮。目录增删、启停、调度时间或全局唤醒选项变化都会同步对应任务。
+
+全局配置 `wake_computer_for_scheduled_tasks` 控制计划任务的 `WakeToRun`，默认为 `false`。前端仅在启用 Windows 计划任务后显示“唤醒计算机执行任务”；启用后，应用创建的所有目录任务均可在计划时间唤醒处于睡眠状态的计算机。
 
 `refresh_schedule_table`（在 `app.rs`）始终根据各目录的 `schedule.time` 重建排程表，供界面展示下次运行时间；选择 Windows 计划任务时，该表不启动轮询。
 
@@ -234,6 +236,7 @@ pub struct AppCore {
   "minimize_to_tray": true,
   "start_with_windows": false,
   "use_windows_task_scheduler": false,
+  "wake_computer_for_scheduled_tasks": false,
   "log_retention_days": 90,
   "templates": [
     { "name": "H.265 高质量", "params": "-c:v libx265 -crf 18 -preset slow -c:a aac -b:a 192k" },
@@ -466,23 +469,7 @@ cd src-tauri && cargo test
 
 ---
 
-## 9. 未来版本计划
-
-### 9.1 Windows 计划任务使用独立文件夹
-
-当前版本把 `AutoVideoCompressor-<安全目录名>` 任务直接创建在 Windows“任务计划程序库”的根目录。未来版本应改为统一创建在 `\AutoVideoCompressor\` 任务文件夹中，避免污染根目录并便于集中管理。
-
-实现时需要满足以下要求：
-
-- 创建、更新、查询、立即运行和删除任务时，统一使用 `\AutoVideoCompressor\<安全目录名>` 完整任务路径。
-- 调度同步时识别当前版本遗留在根目录的 `AutoVideoCompressor-*` 任务，将其迁移到独立文件夹，并删除迁移成功的旧任务，避免同一目录被重复调度。
-- 迁移和重复同步必须保持幂等；不得删除不属于本应用的任务。
-- 删除最后一个应用任务后，可在确认文件夹为空时清理 `\AutoVideoCompressor\` 文件夹；清理失败不应影响任务删除结果。
-- 为任务路径生成、旧任务迁移和重复同步补充自动化测试。
-
----
-
-## 10. 设计要点小结
+## 9. 设计要点小结
 
 1. **业务逻辑单向下沉到 Rust**：前端不做任何文件系统/进程操作，只负责渲染和收集输入，所有状态的唯一真源在后端（内存态 `AppCore` + 磁盘配置/日志文件）。
 2. **配置分层**：全局配置管理"监控哪些目录、公共参数模板、ffmpeg 路径等应用级设置"；每个目录的匹配规则/调度时间/压缩参数独立存放在目录自身的 `.autocompress/config.json` 里，方便迁移目录时配置随目录走。

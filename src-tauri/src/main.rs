@@ -233,11 +233,13 @@ fn main() {
             core_for_setup.start_pending_jobs_monitor();
 
             // 调度后端选择：Windows 计划任务或 inprocess（默认）。
-            let use_task_scheduler = core_for_setup
-                .config
-                .lock()
-                .unwrap()
-                .use_windows_task_scheduler;
+            let (use_task_scheduler, wake_to_run) = {
+                let config = core_for_setup.config.lock().unwrap();
+                (
+                    config.use_windows_task_scheduler,
+                    config.wake_computer_for_scheduled_tasks,
+                )
+            };
             if use_task_scheduler {
                 // 将目录级调度同步为 Windows 计划任务，
                 // 由 Windows Task Scheduler 触发 exe --scheduled --directory <path>。
@@ -245,7 +247,7 @@ fn main() {
                 eprintln!("[main] 使用 Windows 计划任务调度后端");
                 let task_scheduler = windows_task_scheduler::WindowsTaskScheduler::new();
                 let dirs = core_for_setup.config.lock().unwrap().directories.clone();
-                task_scheduler.sync_all(&dirs);
+                task_scheduler.sync_all(&dirs, wake_to_run);
                 core_for_setup.refresh_schedule_table();
             } else {
                 // 默认 inprocess 模式：应用内轮询调度。

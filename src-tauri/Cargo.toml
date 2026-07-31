@@ -1,6 +1,6 @@
 [package]
 name = "autovideocompressor"
-version = "0.3.0"
+version = "0.3.1"
 description = "AutoVideoCompressor - Video compression tool"
 authors = ["guyu"]
 edition = "2021"
@@ -27,6 +27,13 @@ regex = "1"
 chrono = "0.4"
 walkdir = "2"
 fs4 = "0.8"
+windows = { version = "0.61.3", features = [
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_System_Ole",
+    "Win32_System_TaskScheduler",
+    "Win32_System_Variant",
+] }
 
 [dev-dependencies]
 tempfile = "3"

@@ -58,6 +58,7 @@ export interface GlobalConfig {
   minimizeToTray: boolean; startWithWindows: boolean;
   logRetentionDays: number; language: string; templates: Template[];
   useWindowsTaskScheduler: boolean;
+  wakeComputerForScheduledTasks: boolean;
 }
 
 export interface CompressProgress {

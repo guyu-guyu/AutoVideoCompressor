@@ -19,7 +19,7 @@
 - **压缩文件预览** — 显示匹配文件、压缩后文件名、大小、循环风险、单次限制状态
 - **系统托盘常驻** — 最小化到托盘、右键菜单（显示主窗口 / 退出）
 - **开机自启动**
-- **原生 Windows 计划任务** — 直接调用系统 `schtasks.exe`，不依赖第三方调度工具
+- **原生 Windows 计划任务** — 通过系统 Task Scheduler COM API 管理任务，统一存放在 `\AutoVideoCompressor\` 文件夹中
 - **`--run-once` 模式** — 供脚本手动调用的无窗口单次执行模式
 
 ## 截图
@@ -95,6 +95,7 @@ npm run build:tauri
   "minimize_to_tray": true,
   "start_with_windows": false,
   "use_windows_task_scheduler": false,
+  "wake_computer_for_scheduled_tasks": false,
   "log_retention_days": 90,
   "templates": [
     { "name": "H.265 高质量", "params": "-c:v libx265 -crf 18 -preset slow -c:a aac -b:a 192k" },
@@ -131,8 +132,8 @@ autovideocompressor.exe --run-once
 autovideocompressor.exe --run-once --directory "D:\Videos"
 ```
 
-Windows 计划任务由应用自动注册为 `--scheduled --directory <path>`，该模式会显示 GUI、自动进入对应目录并支持查看进度或手动停止。
-计划任务使用 Windows 交互模式运行，因此需要用户处于登录状态。
+Windows 计划任务统一创建在任务计划程序库的 `\AutoVideoCompressor\` 文件夹中，动作参数为 `--scheduled --directory <path>`。该模式会显示 GUI、自动进入对应目录，并支持查看进度或手动停止。
+计划任务使用 Windows 交互模式运行，因此需要用户处于登录状态。全局设置中启用“唤醒计算机执行任务”后，所有应用计划任务都会开启 `WakeToRun`，在计划时间唤醒处于睡眠状态的计算机运行任务。
 
 ## 开发
 

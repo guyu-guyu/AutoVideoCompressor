@@ -87,6 +87,12 @@ async function save() {
                 <n-checkbox v-model:checked="cfg.useWindowsTaskScheduler"
                     >使用 Windows 计划任务（退出后仍按时启动）</n-checkbox
                 >
+                <n-checkbox
+                    v-if="cfg.useWindowsTaskScheduler"
+                    v-model:checked="cfg.wakeComputerForScheduledTasks"
+                    class="scheduler-sub-option"
+                    >唤醒计算机执行任务</n-checkbox
+                >
             </n-space>
 
             <n-form-item label="模板" class="tmpl-form-item">
@@ -130,5 +136,8 @@ async function save() {
 }
 .tmpl-form-item :deep(.n-form-item-blank) {
     width: 100%;
+}
+.scheduler-sub-option {
+    margin-left: 24px;
 }
 </style>

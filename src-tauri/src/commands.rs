@@ -31,6 +31,7 @@ pub fn get_global_config(core: Core) -> serde_json::Value {
         "logRetentionDays": c.log_retention_days,
         "language": c.language,
         "useWindowsTaskScheduler": c.use_windows_task_scheduler,
+        "wakeComputerForScheduledTasks": c.wake_computer_for_scheduled_tasks,
         "templates": c.templates.iter().map(|(n,p)|
             serde_json::json!({"name": n, "params": p})).collect::<Vec<_>>(),
     })
@@ -40,9 +41,12 @@ pub fn get_global_config(core: Core) -> serde_json::Value {
 pub fn save_global_config(core: Core, config: serde_json::Value) -> AppResult<()> {
     let old_use_task_scheduler: bool;
     let new_use_task_scheduler: bool;
+    let old_wake_computer: bool;
+    let new_wake_computer: bool;
     {
         let mut c = core.config.lock().unwrap();
         old_use_task_scheduler = c.use_windows_task_scheduler;
+        old_wake_computer = c.wake_computer_for_scheduled_tasks;
         if let Some(v) = config.get("ffmpegPath").and_then(|x| x.as_str()) { c.ffmpeg_path = v.into(); }
         if let Some(v) = config.get("ffmpegTimeoutSeconds").and_then(|x| x.as_i64()) { c.ffmpeg_timeout_seconds = v; }
         if let Some(v) = config.get("minimizeToTray").and_then(|x| x.as_bool()) { c.minimize_to_tray = v; }
@@ -50,7 +54,9 @@ pub fn save_global_config(core: Core, config: serde_json::Value) -> AppResult<()
         if let Some(v) = config.get("logRetentionDays").and_then(|x| x.as_i64()) { c.log_retention_days = v; }
         if let Some(v) = config.get("language").and_then(|x| x.as_str()) { c.language = v.into(); }
         if let Some(v) = config.get("useWindowsTaskScheduler").and_then(|x| x.as_bool()) { c.use_windows_task_scheduler = v; }
+        if let Some(v) = config.get("wakeComputerForScheduledTasks").and_then(|x| x.as_bool()) { c.wake_computer_for_scheduled_tasks = v; }
         new_use_task_scheduler = c.use_windows_task_scheduler;
+        new_wake_computer = c.wake_computer_for_scheduled_tasks;
         if let Some(arr) = config.get("templates").and_then(|x| x.as_array()) {
             c.templates = arr.iter().filter_map(|t| {
                 let n = t.get("name").and_then(|x| x.as_str())?.to_string();
@@ -63,12 +69,12 @@ pub fn save_global_config(core: Core, config: serde_json::Value) -> AppResult<()
     }
 
     // 切换调度后端时，需要清理或同步所有 Windows 计划任务。
-    if old_use_task_scheduler != new_use_task_scheduler {
+    if old_use_task_scheduler != new_use_task_scheduler || old_wake_computer != new_wake_computer {
         let task_scheduler = WindowsTaskScheduler::new();
         let directories = core.config.lock().unwrap().directories.clone();
         if new_use_task_scheduler {
-            task_scheduler.sync_all(&directories);
-        } else {
+            task_scheduler.sync_all(&directories, new_wake_computer);
+        } else if old_use_task_scheduler {
             task_scheduler.remove_all(&directories);
         }
     }
@@ -79,15 +85,15 @@ pub fn save_global_config(core: Core, config: serde_json::Value) -> AppResult<()
 
 #[tauri::command]
 pub fn add_directory(core: Core, path: String) -> AppResult<()> {
-    let sync_task = {
+    let (sync_task, wake_to_run) = {
         let mut c = core.config.lock().unwrap();
         c.add_directory(&path);
         if !c.save() { return Err(AppError::new("保存配置失败")); }
-        c.use_windows_task_scheduler
+        (c.use_windows_task_scheduler, c.wake_computer_for_scheduled_tasks)
     };
     if sync_task {
         let cfg = DirectoryConfig::load(&path);
-        WindowsTaskScheduler::new().sync_directory(&path, cfg.schedule_time.as_deref(), true)
+        WindowsTaskScheduler::new().sync_directory(&path, cfg.schedule_time.as_deref(), true, wake_to_run)
             .map_err(|e| AppError::new(&e))?;
     }
     core.refresh_schedule_table();
@@ -116,17 +122,17 @@ pub fn remove_directory(core: Core, path: String, force: bool) -> AppResult<()> 
 
 #[tauri::command]
 pub fn set_directory_enabled(core: Core, path: String, enabled: bool) -> AppResult<()> {
-    let sync_task = {
+    let (sync_task, wake_to_run) = {
         let mut c = core.config.lock().unwrap();
         if let Some(i) = c.directories.iter().position(|d| d.path == path) {
             c.set_enabled(i, enabled);
         }
         if !c.save() { return Err(AppError::new("保存配置失败")); }
-        c.use_windows_task_scheduler
+        (c.use_windows_task_scheduler, c.wake_computer_for_scheduled_tasks)
     };
     if sync_task {
         let cfg = DirectoryConfig::load(&path);
-        WindowsTaskScheduler::new().sync_directory(&path, cfg.schedule_time.as_deref(), enabled)
+        WindowsTaskScheduler::new().sync_directory(&path, cfg.schedule_time.as_deref(), enabled, wake_to_run)
             .map_err(|e| AppError::new(&e))?;
     }
     core.refresh_schedule_table();
@@ -203,9 +209,26 @@ pub fn save_directory_config(core: Core, path: String, config: DirConfigView) ->
     }
     let cfg = apply_view(&path, &config);
     if !cfg.save() { return Err(AppError::new("写入配置文件失败")); }
-    let sync_task = { core.config.lock().unwrap().use_windows_task_scheduler };
+    let (sync_task, wake_to_run, directory_enabled) = {
+        let config = core.config.lock().unwrap();
+        (
+            config.use_windows_task_scheduler,
+            config.wake_computer_for_scheduled_tasks,
+            config
+                .directories
+                .iter()
+                .find(|directory| directory.path == path)
+                .map(|directory| directory.enabled)
+                .unwrap_or(false),
+        )
+    };
     if sync_task {
-        WindowsTaskScheduler::new().sync_directory(&path, cfg.schedule_time.as_deref(), true)
+        WindowsTaskScheduler::new().sync_directory(
+            &path,
+            cfg.schedule_time.as_deref(),
+            directory_enabled,
+            wake_to_run,
+        )
             .map_err(|e| AppError::new(&e))?;
     }
     core.refresh_schedule_table();
