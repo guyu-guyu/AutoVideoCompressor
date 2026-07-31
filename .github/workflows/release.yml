@@ -48,10 +48,23 @@ jobs:
         shell: bash
         run: echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
 
+      - name: Extract release notes from tagged commit
+        shell: pwsh
+        run: |
+          $releaseNotes = git log -1 --format=%B HEAD
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to read the tagged commit message."
+          }
+          if ([string]::IsNullOrWhiteSpace(($releaseNotes -join "`n"))) {
+            throw "The tagged commit message is empty."
+          }
+          $releaseNotes | Set-Content -Path release-notes.md -Encoding utf8
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: ${{ steps.version.outputs.tag }}
-          generate_release_notes: true
+          body_path: release-notes.md
+          generate_release_notes: false
           fail_on_unmatched_files: true
           files: src-tauri/target/release/AutoVideoCompressor_*.exe

@@ -467,6 +467,30 @@ cd src-tauri && cargo test
 
 前置环境：Rust（MSVC 工具链）、Node.js 18+、Visual Studio Build Tools（"使用 C++ 的桌面开发"组件）。
 
+### 8.1 版本发布
+
+推送 `v*` tag 会触发 `.github/workflows/release.yml`，构建带版本号的便携版程序并创建 GitHub Release。Release Note 直接使用 **tag 指向提交的完整 commit message**（`git log -1 --format=%B HEAD`），不会使用注解 tag 自身的 message，也不会再由 GitHub 自动生成。
+
+发布时必须遵守以下约定：
+
+- 先同步修改 `package.json`、`package-lock.json`、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock` 和 `src-tauri/tauri.conf.json` 中的版本号。
+- 版本 tag 必须直接指向专门的发布提交，避免把普通开发提交的 message 发布给用户。
+- 发布提交必须使用中文 commit message，并将标题和正文写成可以直接展示的 Release Note；标题应说明版本，正文应概括主要功能、行为变化和必要的使用条件。
+- 推送发布提交后再推送对应 tag；工作流从 tag 检出的 `HEAD` 提取完整 commit message 并写入 Release 正文。
+
+示例：
+
+```text
+发布：v0.3.2
+
+## v0.3.2 更新内容
+
+- 新增……
+- 修复……
+
+使用说明：……
+```
+
 ---
 
 ## 9. 设计要点小结
