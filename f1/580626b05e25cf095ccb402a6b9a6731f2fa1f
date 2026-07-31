@@ -1,0 +1,35 @@
+README.md
+  s_c1c7b45ec0ca9f::t_3538d6d0d38984 22,98,135-136
+docs/PROJECT.md
+  s_c1c7b45ec0ca9f::t_87269dd4bcc023 89,221-223,239,472
+src-tauri/src/commands.rs
+  s_c1c7b45ec0ca9f::t_deb7d5e114e862 34,44-45,49,57,59,72,76-77,88,92,96,125,131,135,212-224,226-231
+src-tauri/src/config/global_config.rs
+  s_c1c7b45ec0ca9f::t_3bd8d3d6d940a1 24-25,58,106-109,147-150,237,242,254
+src-tauri/src/main.rs
+  s_c1c7b45ec0ca9f::t_5a71ef168967dd 236-242,250
+src-tauri/src/windows_task_scheduler.rs
+  s_c1c7b45ec0ca9f::t_1d8d0e7fb2ccd2 1-3,7,9-19,21-25,31-61,69-70,72,75,78-80,82-83,86-99,102-117,119-152,154-170,173-193,201,204,209,216,238-259,269-299,351,354-358,363,365-366,381,386,391-392
+src/components/GlobalSettings.test.ts
+  s_c1c7b45ec0ca9f::t_439117c0657b38 1-72
+src/components/GlobalSettings.vue
+  s_c1c7b45ec0ca9f::t_93dfb2738728eb 90-95,140-142
+src/types.ts
+  s_c1c7b45ec0ca9f::t_0d8fe96bb97925 61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.18",
+  "base_commit_sha": "f1580626b05e25cf095ccb402a6b9a6731f2fa1f",
+  "prompts": {},
+  "sessions": {
+    "s_c1c7b45ec0ca9f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb21d-4e98-7170-b032-279a1a24037b",
+        "model": "unknown"
+      },
+      "human_author": "leijieliu <leijieliu@tencent.com>"
+    }
+  }
+}
