@@ -1,3 +1,5 @@
+tmp/
+
 # Claude / tooling
 .claude/
 .superpowers/
