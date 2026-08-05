@@ -59,6 +59,13 @@ pub fn compare_and_cleanup(
         result.status = FileStatus::SkippedLarger;
         result.saved_bytes = -((compressed_size - original_size) as i64);
         safe_delete(Path::new(compressed_path));
+        // Compressed file was not smaller — keep the original, but still apply
+        // the rename rule to it so the kept file no longer matches include and
+        // won't be recompressed (and discarded) on every subsequent run.
+        let target = Path::new(final_path);
+        if target != orig {
+            safe_rename(orig, target);
+        }
     }
     result
 }
@@ -88,7 +95,7 @@ mod tests {
     }
 
     #[test]
-    fn larger_compressed_discarded() {
+    fn larger_compressed_discarded_and_original_renamed() {
         let tmp = tempfile::tempdir().unwrap();
         let orig = tmp.path().join("a.mp4");
         let comp = tmp.path().join("a_tmp.mp4");
@@ -96,6 +103,30 @@ mod tests {
         std::fs::write(&comp, vec![0u8; 100]).unwrap();
 
         let final_path = tmp.path().join("a[compress].mp4").to_string_lossy().to_string();
+        let r = compare_and_cleanup(
+            orig.to_str().unwrap(), 40, comp.to_str().unwrap(), 100,
+            &final_path, 0, 500);
+        assert_eq!(r.status, FileStatus::SkippedLarger);
+        // Compressed was discarded...
+        assert!(!comp.exists());
+        // ...and the original was kept, but renamed per the rename rule so it
+        // won't match include again on the next run.
+        assert!(!orig.exists());
+        assert!(tmp.path().join("a[compress].mp4").exists());
+        assert_eq!(r.final_name, "a[compress].mp4");
+    }
+
+    #[test]
+    fn larger_compressed_keeps_original_when_rename_is_noop() {
+        let tmp = tempfile::tempdir().unwrap();
+        let orig = tmp.path().join("a.mp4");
+        let comp = tmp.path().join("a_tmp.mp4");
+        std::fs::write(&orig, vec![0u8; 40]).unwrap();
+        std::fs::write(&comp, vec![0u8; 100]).unwrap();
+
+        // final_path identical to the original (e.g. no rename rule matched):
+        // the rename is a no-op and the original stays untouched.
+        let final_path = orig.to_string_lossy().to_string();
         let r = compare_and_cleanup(
             orig.to_str().unwrap(), 40, comp.to_str().unwrap(), 100,
             &final_path, 0, 500);

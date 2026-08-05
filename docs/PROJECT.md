@@ -297,7 +297,7 @@ pub struct AppCore {
 
 **`file_compare.rs`**：
 
-- `compare_and_cleanup()`：比较压缩前后文件大小 → 若 ffmpeg 退出码非 0，判定失败，删除临时文件，保留原文件；若压缩后更大，判定 `SkippedLarger`，丢弃压缩结果保留原文件；若压缩后更小，判定 `Success`：删除原文件、去掉临时文件名后缀、按最终路径（含 rename 规则）改名落地。
+- `compare_and_cleanup()`：比较压缩前后文件大小 → 若 ffmpeg 退出码非 0，判定失败，删除临时文件，保留原文件；若压缩后更大或相等，判定 `SkippedLarger`，丢弃压缩结果保留原文件，并对原文件应用 rename 规则改名（避免下次运行仍匹配 include 被反复压缩）；若压缩后更小，判定 `Success`：删除原文件、去掉临时文件名后缀、按最终路径（含 rename 规则）改名落地。
 
 ### 4.7 日志系统（`logger.rs`）
 
