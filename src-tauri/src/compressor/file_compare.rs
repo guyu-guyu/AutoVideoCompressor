@@ -44,6 +44,17 @@ pub fn compare_and_cleanup(
         return result;
     }
 
+    // Defense-in-depth: a "compressed" output that is missing or 0 bytes can
+    // never be a valid result, even if ffmpeg reported exit 0 (e.g. disk full,
+    // encoder produced nothing). Treat it as failure and keep the original —
+    // deleting the original here was the "→ 0.0 B" data-loss bug.
+    if compressed_size == 0 || !Path::new(compressed_path).exists() {
+        result.status = FileStatus::Failed;
+        result.error_message = "压缩输出为空或不存在".into();
+        safe_delete(Path::new(compressed_path));
+        return result;
+    }
+
     if compressed_size < original_size {
         result.status = FileStatus::Success;
         result.saved_bytes = original_size as i64 - compressed_size as i64;
@@ -132,6 +143,28 @@ mod tests {
             &final_path, 0, 500);
         assert_eq!(r.status, FileStatus::SkippedLarger);
         assert!(orig.exists());
+        assert!(!comp.exists());
+    }
+
+    /// Regression test for the "→ 0.0 B" data-loss bug: when ffmpeg timed out /
+    /// was killed, the partial temp file was already deleted and exit_code was
+    /// left at 0, so compare_and_cleanup treated a 0-byte "compressed" output
+    /// as Success and deleted the original. A 0-byte output must NEVER delete
+    /// the original.
+    #[test]
+    fn empty_compressed_output_never_deletes_original() {
+        let tmp = tempfile::tempdir().unwrap();
+        let orig = tmp.path().join("a.mp4");
+        let comp = tmp.path().join("a_tmp.mp4");
+        std::fs::write(&orig, vec![0u8; 100]).unwrap();
+        // compressed file missing entirely (already cleaned up after timeout)
+
+        let final_path = tmp.path().join("a[compress].mp4").to_string_lossy().to_string();
+        let r = compare_and_cleanup(
+            orig.to_str().unwrap(), 100, comp.to_str().unwrap(), 0,
+            &final_path, 0, 500);
+        assert_ne!(r.status, FileStatus::Success, "0 字节输出绝不能判成功");
+        assert!(orig.exists(), "0 字节输出时原文件必须保留");
         assert!(!comp.exists());
     }
 

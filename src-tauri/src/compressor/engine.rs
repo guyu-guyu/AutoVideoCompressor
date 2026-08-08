@@ -101,9 +101,36 @@ pub fn run_process(program: &str, args: &[&str], timeout_secs: i64, cancel: &Ato
     }
 }
 
+/// Turn run_process's (code, timed_out) into a CompressResult.
+///
+/// `exit_code` is ALWAYS set to the real `code` so callers can distinguish
+/// timeout (-2), spawn failure (-1) and cancellation (-3) from a genuine exit 0.
+///
+/// Prior bug: the timeout/spawn-failure branches never set `exit_code`, leaving
+/// it at its `Default` value 0 while `success` stayed false. app.rs then read a
+/// "0-byte compressed output" and compare_and_cleanup treated exit_code 0 as a
+/// successful run — deleting the original file ("→ 0.0 B" in run logs).
+pub fn build_result(code: i32, timed_out: bool, timeout_secs: i64) -> CompressResult {
+    let mut result = CompressResult::default();
+    if code == -3 {
+        result.cancelled = true;
+        result.error_message = "压缩已取消".into();
+    } else if timed_out {
+        result.error_message = format!("压缩超时 ({}s)", timeout_secs);
+    } else if code == -1 {
+        result.error_message = "无法启动 ffmpeg 进程".into();
+    } else {
+        result.success = code == 0;
+        if !result.success {
+            result.error_message = format!("ffmpeg 退出码: {}", code);
+        }
+    }
+    result.exit_code = code;
+    result
+}
+
 /// Compress one file. Mirrors CompressionEngine::compress.
 pub fn compress(params: &CompressParams, cancel: &AtomicBool) -> CompressResult {
-    let mut result = CompressResult::default();
     let start = Instant::now();
 
     let mut args: Vec<String> = vec!["-i".into(), params.input_path.clone()];
@@ -115,23 +142,13 @@ pub fn compress(params: &CompressParams, cancel: &AtomicBool) -> CompressResult 
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
 
     let (code, timed_out, _out) = run_process(&params.ffmpeg_path, &arg_refs, params.timeout_seconds, cancel);
+    let mut result = build_result(code, timed_out, params.timeout_seconds);
     result.duration_ms = start.elapsed().as_millis() as i32;
 
-    if code == -3 {
-        result.cancelled = true;
-        result.error_message = "压缩已取消".into();
+    // On cancellation/timeout ffmpeg may have written a partial output file.
+    // Delete it (with retries — Windows may briefly hold the handle after kill).
+    if result.cancelled || timed_out {
         safe_delete_retry(Path::new(&params.output_path), 5);
-    } else if timed_out {
-        result.error_message = format!("压缩超时 ({}s)", params.timeout_seconds);
-        safe_delete_retry(Path::new(&params.output_path), 5);
-    } else if code == -1 {
-        result.error_message = "无法启动 ffmpeg 进程".into();
-    } else {
-        result.exit_code = code;
-        result.success = code == 0;
-        if !result.success {
-            result.error_message = format!("ffmpeg 退出码: {}", code);
-        }
     }
     result
 }
@@ -226,5 +243,45 @@ mod tests {
         let cancel = AtomicBool::new(false);
         let out = run_process("cmd", &["/C", "exit", "0"], 5, &cancel);
         assert_eq!(out.0, 0);
+    }
+
+    /// Regression: a timeout must surface as exit_code -2, never the default 0.
+    /// exit_code 0 was what made compare_and_cleanup delete the original file.
+    #[test]
+    fn timeout_propagates_negative_exit_code() {
+        let r = build_result(-2, true, 3600);
+        assert_eq!(r.exit_code, -2, "超时必须上报 -2，不能是默认的 0");
+        assert!(!r.success);
+        assert!(!r.cancelled);
+        assert!(r.error_message.contains("超时"));
+    }
+
+    #[test]
+    fn spawn_failure_propagates_negative_exit_code() {
+        let r = build_result(-1, false, 3600);
+        assert_eq!(r.exit_code, -1);
+        assert!(!r.success);
+        assert!(!r.cancelled);
+        assert!(r.error_message.contains("无法启动"));
+    }
+
+    #[test]
+    fn cancellation_reports_minus_three() {
+        let r = build_result(-3, false, 3600);
+        assert_eq!(r.exit_code, -3);
+        assert!(r.cancelled);
+        assert!(!r.success);
+    }
+
+    #[test]
+    fn normal_exit_reports_real_code() {
+        let ok = build_result(0, false, 3600);
+        assert_eq!(ok.exit_code, 0);
+        assert!(ok.success);
+
+        let err = build_result(183, false, 3600);
+        assert_eq!(err.exit_code, 183);
+        assert!(!err.success);
+        assert!(err.error_message.contains("183"));
     }
 }
